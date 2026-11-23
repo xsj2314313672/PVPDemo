@@ -1,6 +1,6 @@
 """Compare the 1P setup of APVPBaseCharacter against the reference BP_TFA_BaseCharacter.
 
-The script creates (or reuses) the derived blueprint /Game/PVPDemo/Characters/BP_PVPBaseCharacter,
+The script creates (or reuses) the derived blueprint /Game/PVP/Characters/BP_PVPBaseCharacter,
 spawns both actors in the TFA demo map and diffs the 1P relevant data: component tree,
 attachments, relative transforms, camera settings and character level view settings.
 
@@ -17,7 +17,7 @@ import os
 import unreal
 
 REFERENCE_BP_PATH = '/Game/InfimaGames/TacticalFPSAnimations/Common/Core/Characters/BP_TFA_BaseCharacter'
-DERIVED_BP_DIR = '/Game/PVPDemo/Characters'
+DERIVED_BP_DIR = '/Game/PVP/Characters'
 DERIVED_BP_NAME = 'BP_PVPBaseCharacter'
 DERIVED_BP_PATH = '%s/%s' % (DERIVED_BP_DIR, DERIVED_BP_NAME)
 NATIVE_CLASS_PATH = '/Script/PVPDemo.PVPBaseCharacter'
