@@ -31,7 +31,8 @@ Build/
 .idea/
 .vscode/
 *.code-workspace
-# .codebuddy/ 下为提示词工程内容（规则 / 计划），全部纳入版本控制，不在此忽略
+# .codebuddy/rules/ 为常驻规则，继续纳入版本控制；.codebuddy/plans/ 仅本地保留，不上传
+.codebuddy/plans/
 
 # ============================================================
 # Python 缓存
