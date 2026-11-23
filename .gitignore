@@ -31,7 +31,7 @@ Build/
 .idea/
 .vscode/
 *.code-workspace
-.codebuddy/
+# .codebuddy/ 下为提示词工程内容（规则 / 计划），全部纳入版本控制，不在此忽略
 
 # ============================================================
 # Python 缓存
@@ -49,6 +49,10 @@ Content/InfimaGames/
 # ============================================================
 Content/Collections/
 Content/Developers/
+
+# 已无对应地图的孤儿外部 Actor 数据；若后续启用 World Partition / OFPA 须移除这两行
+Content/__ExternalActors__/
+Content/__ExternalObjects__/
 
 # ============================================================
 # 操作系统文件
