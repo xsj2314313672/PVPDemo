@@ -22,7 +22,10 @@ public class PVPDemoEditor : ModuleRules
 			"Engine",
 			"UnrealEd",
 			"AssetRegistry",
-			"Json"
+			"Json",
+			// Weapon attachment builder shares the runtime slot types (E_PVPWeaponAttachmentSlot,
+			// FPVPWeaponAttachmentSpec) with the runtime module. Editor -> Runtime is one way only.
+			"PVPDemo"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[]

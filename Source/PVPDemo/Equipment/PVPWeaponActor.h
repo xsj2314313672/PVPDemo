@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "PVPWeaponAttachmentTypes.h"
 
 #include "PVPWeaponActor.generated.h"
 
@@ -12,8 +13,11 @@ class UAnimInstance;
 class UAnimMontage;
 class USkeletalMesh;
 class USkeletalMeshComponent;
+class UStaticMesh;
+class UStaticMeshComponent;
 class USphereComponent;
 class UPVPEquipmentComponent;
+class UPVPWeaponAttachmentCatalog;
 
 /**
  * A character / weapon animation pair played on two different skeletons.
@@ -121,6 +125,13 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "PVP|Weapon|Attachment")
 	FName MuzzleSocketName = TEXT("SOCKET_Muzzle");
 
+	/**
+	 * Optional attachment catalog (DA_PVP_WeaponAttachmentCatalog) consumed by ApplyAttachmentLoadout.
+	 * The attachment mesh components themselves are authored on this weapon blueprint, not created here.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "PVP|Weapon|Attachment")
+	TObjectPtr<UPVPWeaponAttachmentCatalog> AttachmentCatalog;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "PVP|Weapon|Pickup", meta = (ClampMin = "0.0"))
 	float PickupRadius = 120.0f;
 
@@ -192,6 +203,36 @@ public:
 	UFUNCTION(BlueprintPure, Category = "PVP|Weapon")
 	ACharacter* GetOwningCharacter() const { return OwningCharacter.Get(); }
 
+	//~ Begin Attachment interface
+	/**
+	 * Rebuilds AttachmentComponents from the components tagged PVP.Attachment.<Slot>.
+	 * Runs once per construction / BeginPlay; no per-frame work.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "PVP|Weapon|Attachment")
+	void RefreshAttachmentComponents();
+
+	UFUNCTION(BlueprintPure, Category = "PVP|Weapon|Attachment")
+	UStaticMeshComponent* GetAttachmentComponent(E_PVPWeaponAttachmentSlot Slot) const;
+
+	UFUNCTION(BlueprintPure, Category = "PVP|Weapon|Attachment")
+	UStaticMesh* GetAttachmentMesh(E_PVPWeaponAttachmentSlot Slot) const;
+
+	/** Shows / hides an assembled attachment without losing its mesh. */
+	UFUNCTION(BlueprintCallable, Category = "PVP|Weapon|Attachment")
+	bool SetAttachmentEnabled(E_PVPWeaponAttachmentSlot Slot, bool bEnabled);
+
+	/** Swaps the mesh of an assembled attachment; the socket / transform stay untouched. */
+	UFUNCTION(BlueprintCallable, Category = "PVP|Weapon|Attachment")
+	bool ApplyAttachmentMesh(E_PVPWeaponAttachmentSlot Slot, UStaticMesh* NewMesh);
+
+	/**
+	 * Applies a catalog preset: every slot listed in the preset gets its mesh and is enabled, every
+	 * other assembled attachment is hidden. Returns the number of slots that were updated.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "PVP|Weapon|Attachment")
+	int32 ApplyAttachmentLoadout(FName LoadoutName);
+	//~ End Attachment interface
+
 protected:
 	UFUNCTION()
 	void HandlePickupOverlap(
@@ -213,6 +254,10 @@ protected:
 	void SetPickupSuppressed(bool bSuppressed);
 
 	void ResumePickup();
+
+	/** Slot table built from the attachment components tagged PVP.Attachment.<Slot>. */
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "PVP|Weapon|Attachment")
+	TMap<E_PVPWeaponAttachmentSlot, TObjectPtr<UStaticMeshComponent>> AttachmentComponents;
 
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "PVP|Weapon")
 	bool bIsEquipped = false;

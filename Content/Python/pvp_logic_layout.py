@@ -140,6 +140,7 @@ EXPECTED_ASSETS = {
         'BP_PVP_BaseCharacter',
     ),
     'Data': (
+        'DA_PVP_WeaponAttachmentCatalog',
         'DT_PVP_TextStyle',
     ),
     'Game': (
@@ -170,14 +171,14 @@ EXPECTED_COUNTS = {
     'Animation/Interfaces': 1,
     'Animation/Notifies': 9,
     'Characters': 2,
-    'Data': 1,
+    'Data': 2,
     'Game': 2,
     'Input': 31,
     'Maps': 1,
     'Types': 5,
     'UI': 2,
 }
-EXPECTED_TOTAL = 80
+EXPECTED_TOTAL = 81
 
 # Legacy paths that must not survive anywhere in Content/PVP or Content/PVPDemo after the move.
 LEGACY_PATH_PREFIXES = (

@@ -3,12 +3,15 @@
 #include "PVPDemo/Equipment/PVPWeaponActor.h"
 
 #include "PVPDemo/Equipment/PVPEquipmentComponent.h"
+#include "PVPDemo/Equipment/PVPWeaponAttachmentCatalog.h"
 
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/SphereComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
+#include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "GameFramework/Character.h"
 #include "TimerManager.h"
@@ -56,6 +59,7 @@ void APVPWeaponActor::OnConstruction(const FTransform& Transform)
 	Super::OnConstruction(Transform);
 
 	ApplyConfiguration();
+	RefreshAttachmentComponents();
 }
 
 void APVPWeaponActor::BeginPlay()
@@ -63,6 +67,7 @@ void APVPWeaponActor::BeginPlay()
 	Super::BeginPlay();
 
 	ApplyConfiguration();
+	RefreshAttachmentComponents();
 
 	if (!bIsEquipped && !bPickupSuppressed)
 	{
@@ -389,4 +394,136 @@ void APVPWeaponActor::ResumePickup()
 	{
 		SetPickupEnabled(true);
 	}
+}
+
+void APVPWeaponActor::RefreshAttachmentComponents()
+{
+	AttachmentComponents.Reset();
+
+	TArray<UStaticMeshComponent*> MeshComponents;
+	GetComponents<UStaticMeshComponent>(MeshComponents);
+
+	for (UStaticMeshComponent* MeshComponent : MeshComponents)
+	{
+		if (!MeshComponent)
+		{
+			continue;
+		}
+
+		for (const FName& Tag : MeshComponent->ComponentTags)
+		{
+			const E_PVPWeaponAttachmentSlot Slot = PVPWeaponAttachment::SlotFromComponentTag(Tag);
+			if (Slot == E_PVPWeaponAttachmentSlot::None || AttachmentComponents.Contains(Slot))
+			{
+				continue;
+			}
+
+			AttachmentComponents.Add(Slot, MeshComponent);
+			UE_LOG(LogPVPWeaponActor, Verbose, TEXT("%s: attachment slot %s -> %s (socket=%s)."),
+				*GetName(),
+				*PVPWeaponAttachment::SlotToName(Slot).ToString(),
+				*MeshComponent->GetName(),
+				*MeshComponent->GetAttachSocketName().ToString());
+			break;
+		}
+	}
+}
+
+UStaticMeshComponent* APVPWeaponActor::GetAttachmentComponent(E_PVPWeaponAttachmentSlot Slot) const
+{
+	const TObjectPtr<UStaticMeshComponent>* Found = AttachmentComponents.Find(Slot);
+	return Found ? Found->Get() : nullptr;
+}
+
+UStaticMesh* APVPWeaponActor::GetAttachmentMesh(E_PVPWeaponAttachmentSlot Slot) const
+{
+	const UStaticMeshComponent* Component = GetAttachmentComponent(Slot);
+	return Component ? Component->GetStaticMesh() : nullptr;
+}
+
+bool APVPWeaponActor::SetAttachmentEnabled(E_PVPWeaponAttachmentSlot Slot, bool bEnabled)
+{
+	UStaticMeshComponent* Component = GetAttachmentComponent(Slot);
+	if (!Component)
+	{
+		UE_LOG(LogPVPWeaponActor, Warning, TEXT("%s: no assembled component for attachment slot %s."),
+			*GetName(), *PVPWeaponAttachment::SlotToName(Slot).ToString());
+		return false;
+	}
+
+	Component->SetVisibility(bEnabled, true);
+	Component->SetHiddenInGame(!bEnabled, true);
+	return true;
+}
+
+bool APVPWeaponActor::ApplyAttachmentMesh(E_PVPWeaponAttachmentSlot Slot, UStaticMesh* NewMesh)
+{
+	UStaticMeshComponent* Component = GetAttachmentComponent(Slot);
+	if (!Component || !NewMesh)
+	{
+		UE_LOG(LogPVPWeaponActor, Warning,
+			TEXT("%s: cannot apply mesh to attachment slot %s (component=%s mesh=%s)."),
+			*GetName(), *PVPWeaponAttachment::SlotToName(Slot).ToString(),
+			*GetNameSafe(Component), *GetNameSafe(NewMesh));
+		return false;
+	}
+
+	Component->SetStaticMesh(NewMesh);
+	return true;
+}
+
+int32 APVPWeaponActor::ApplyAttachmentLoadout(FName LoadoutName)
+{
+	if (!AttachmentCatalog)
+	{
+		UE_LOG(LogPVPWeaponActor, Warning,
+			TEXT("%s: ApplyAttachmentLoadout('%s') needs AttachmentCatalog to be set on the blueprint."),
+			*GetName(), *LoadoutName.ToString());
+		return 0;
+	}
+
+	const TArray<FPVPWeaponAttachmentSpec> Specs = AttachmentCatalog->BuildLoadoutAssembly(LoadoutName);
+	if (Specs.Num() == 0)
+	{
+		UE_LOG(LogPVPWeaponActor, Warning,
+			TEXT("%s: attachment catalog has no loadout named '%s'."),
+			*GetName(), *LoadoutName.ToString());
+		return 0;
+	}
+
+	TSet<E_PVPWeaponAttachmentSlot> AppliedSlots;
+	int32 UpdatedCount = 0;
+
+	for (const FPVPWeaponAttachmentSpec& Spec : Specs)
+	{
+		UStaticMeshComponent* Component = GetAttachmentComponent(Spec.Slot);
+		if (!Component)
+		{
+			UE_LOG(LogPVPWeaponActor, Warning,
+				TEXT("%s: loadout '%s' needs slot %s but the blueprint has no such component."),
+				*GetName(), *LoadoutName.ToString(), *PVPWeaponAttachment::SlotToName(Spec.Slot).ToString());
+			continue;
+		}
+
+		if (Spec.Mesh && Component->GetStaticMesh() != Spec.Mesh)
+		{
+			Component->SetStaticMesh(Spec.Mesh);
+		}
+
+		SetAttachmentEnabled(Spec.Slot, true);
+		AppliedSlots.Add(Spec.Slot);
+		++UpdatedCount;
+	}
+
+	for (const TPair<E_PVPWeaponAttachmentSlot, TObjectPtr<UStaticMeshComponent>>& Pair : AttachmentComponents)
+	{
+		if (!AppliedSlots.Contains(Pair.Key))
+		{
+			SetAttachmentEnabled(Pair.Key, false);
+		}
+	}
+
+	UE_LOG(LogPVPWeaponActor, Log, TEXT("%s: applied attachment loadout '%s' (%d slots)."),
+		*GetName(), *LoadoutName.ToString(), UpdatedCount);
+	return UpdatedCount;
 }

@@ -316,7 +316,7 @@ UnrealEditor-Cmd.exe "D:/UE/Unreal Projects/PVPDemo/PVPDemo.uproject" -run=Pytho
 - `Source/PVPDemoEditor/PVPAnimBlueprintBuilder.h/.cpp` — 动画图构建器（含 `BuildWeaponAnimBlueprint` / `EnsureMontageSlot`）。
 - `Content/Python/setup_pvp_anim_blueprint.py` — 生成 / 校验驱动脚本。
 - `Content/Python/setup_pvp_weapon.py` — 武器 ABP / 角色 Slot 生成与读回脚本。
-- `Content/Python/pvp_logic_layout.py` — 目标资产路径与计数（`Animation/AnimBP`，总数 80）。
+- `Content/Python/pvp_logic_layout.py` — 目标资产路径与计数（`Animation/AnimBP`，逻辑资产总数 81）。
 - `Content/Python/verify_pvp_asset_layout.py` — 离线布局校验。
 - `Saved/PVPWeaponReport/report.md` — 武器 ABP / 角色 Slot / 武器 BP / 地图拾取物读回报告。
 - `Source/PVPDemo/Character/PVPBaseCharacter.h/.cpp` — 被采集的逻辑状态来源（`bIsRunning` / `RunSpeed` / `MaxWalkSpeed`）。

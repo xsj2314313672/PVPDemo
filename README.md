@@ -1,6 +1,6 @@
 # PVPDemo
 
-基于 Unreal Engine 5 的第一人称 PVP 射击玩法 Demo。当前已落地基础第一人称角色与相机（`Character/PVPBaseCharacter`）、会话与玩家入口层（`Game/PVPGameMode`、`Game/PVPPlayerController`）、动画实例基类（`Animation/PVPAnimInstanceBase`）与四状态 locomotion 动画蓝图（`ABP_PVP_FP_Locomotion`，已在 `BP_PVPBaseCharacter` 上接线，视觉复核待做）、武器拾取与附着（`Equipment/PVPWeaponActor`、`Equipment/PVPEquipmentComponent`，武器蓝图 `BP_PVP_Weapon_AR` + 武器动画蓝图 `ABP_PVP_FP_Weapon_AR`，成对 Equip / Fire / Reload Montage 示例）以及一张工程自有关卡 `L_PVP_Showcase`；规划中逐步接入 GAS 技能框架、移动 / 开镜、武器换弹与检视玩法、动画蓝图分层与音效等模块。
+基于 Unreal Engine 5 的第一人称 PVP 射击玩法 Demo。当前已落地基础第一人称角色与相机（`Character/PVPBaseCharacter`）、会话与玩家入口层（`Game/PVPGameMode`、`Game/PVPPlayerController`）、动画实例基类（`Animation/PVPAnimInstanceBase`）与四状态 locomotion 动画蓝图（`ABP_PVP_FP_Locomotion`，已在 `BP_PVPBaseCharacter` 上接线，视觉复核待做）、武器拾取与附着（`Equipment/PVPWeaponActor`、`Equipment/PVPEquipmentComponent`，武器蓝图 `BP_PVP_Weapon_AR` + 武器动画蓝图 `ABP_PVP_FP_Weapon_AR`，成对 Equip / Fire / Reload Montage 示例）、武器配件分类与装配（散件归入 `Weapons/AssaultRifle/Attachments/`，配件目录 `DA_PVP_WeaponAttachmentCatalog`，`BP_PVP_Weapon_AR` 默认装配基础型 4 件、可切换战术型 8 件）以及一张工程自有关卡 `L_PVP_Showcase`；规划中逐步接入 GAS 技能框架、移动 / 开镜、武器换弹与检视玩法、动画蓝图分层与音效等模块。
 
 ## 目录结构
 

@@ -3,7 +3,7 @@
 > 维度：装备（武器 Actor / 拾取附着 / 成对 Montage）
 > 模块：Equipment
 > 适用工程：PVPDemo（UE 5.9）
-> 最后更新：2026-11-23
+> 最后更新：2026-11-24
 > 上游规范：`AGENTS.md`、`Docs/AI-Workflow.md`、`Docs/Source-Structure.md`、`Docs/Content-Structure.md`
 > 配套文档：`Docs/Equipment/Equipment-Dev.md`（开发流程与踩坑）、`Docs/Equipment/Equipment-Integration.md`（依赖与接口契约）
 
@@ -38,6 +38,7 @@
 | `Docs/Equipment/README.md` | 本导航：定位、路由、能力速查、启动入口、校验入口、维护规则 |
 | `Docs/Equipment/Equipment-Dev.md` | 实现细节：源码结构、设计决策、开发 SOP、踩坑清单、冒烟、已知限制 |
 | `Docs/Equipment/Equipment-Integration.md` | 契约：模块依赖、数据流、C++ / 资产接口、禁止依赖方向、变更影响面 |
+| `Docs/Equipment/Equipment-Attachments.md` | 配件权威表：槽位 / 插槽 / 组件名 / 候选网格、基础与战术两套方案、装配过程记录与换装 SOP |
 
 **按场景路由**：
 
@@ -48,6 +49,8 @@
 | 修改武器网格、动画蓝图、Montage、拾取半径 | 本文第 3.1 节 + `Equipment-Dev.md` 第 4 节 SOP |
 | 生成 / 重建武器资产与关卡拾取物 | 本文第 6 节 → `Equipment-Dev.md` 第 4.3 节 |
 | 排查拾取不到、挂点错位、Montage 不播 | `Equipment-Dev.md` 第 5 节踩坑清单 |
+| 查配件槽位、插槽、候选网格、默认装配 | 本文第 3.4 节 → `Equipment-Attachments.md` 第 2 / 3 节 |
+| 装配 / 换装配件、查看装配过程记录 | `Equipment-Attachments.md` 第 4 / 5 节 |
 | 查 C++ 接口签名、组件契约、依赖方向 | `Equipment-Integration.md` 第 4 / 6 节 |
 | 让动画 / UI / GAS 读取当前武器 | `Equipment-Integration.md` 第 5 节 |
 | 改接口前评估影响面 | `Equipment-Integration.md` 第 7 节 |
@@ -71,6 +74,7 @@
 | `PickupCooldown` | `0.75` | 丢弃后再次可拾取的延迟 |
 | `DropForwardOffset` / `DropHeightOffset` | `150.0` / `-40.0` | 丢弃位置相对角色；150cm 大于拾取半径 + 胶囊半径，避免冷却结束瞬间原角色再次拾取 |
 | `bPlayEquipMontageOnPickup` | `true` | 拾取时自动播放 Equip 成对 Montage |
+| `AttachmentCatalog` | `/Game/PVP/Data/DA_PVP_WeaponAttachmentCatalog` | 配件目录，供 `ApplyAttachmentLoadout` 使用；配件组件本身在 BP 组件树 |
 | `Mesh3P` 可见性 | 默认隐藏、无碰撞 | 为后续 3P 预留，`SetPerspective(false)` 可切换 |
 | 复制 | `bReplicates=false` | 本地表现 Actor，后续装备系统再决定网络方案 |
 
@@ -118,6 +122,32 @@
 | 角色 Mesh | `SKM_PVP_FP_Manny_Simple` | 挂点 `ik_hand_gun` 来自 `SKEL_PVP_Mannequin` |
 | 现有逻辑 | 未改 Move / Look / Jump / Run、`CameraFP`、走跑速度 | 本轮只新增组件与武器拾取 |
 
+### 3.4 配件与装配（权威摘要）
+
+配件网格已按槽位归位到 `Content/PVPDemo/Weapons/AssaultRifle/Attachments/<Group>/`，槽位 / 插槽 / 组件名的完整表在 `Equipment-Attachments.md` 第 2 节，此处只列装配现状。
+
+| 槽位 | 父级 | 插槽 | 组件 | 蓝图默认（Basic） |
+| --- | --- | --- | --- | --- |
+| `Handguard` | `Mesh1P` | `SOCKET_Handguard` | `ATT_Handguard` | `SM_PVP_AR_Handguard_Default` |
+| `FrontSight` | `ATT_Handguard` | `SOCKET_Sight_Front` | `ATT_FrontSight` | `SM_PVP_AR_ATT_Sight_Front` |
+| `RearSight` | `Mesh1P` | `SOCKET_Sight_Rear` | `ATT_RearSight` | `SM_PVP_AR_ATT_Sight_Rear` |
+| `Magazine` | `Mesh1P` | `SOCKET_Magazine` | `ATT_Magazine` | `SM_PVP_AR_Magazine_Full` |
+
+- 方案：`Basic`（默认，4 件）/ `Tactical`（8 件：延长护木 + 瞄具 + 折叠机瞄 + 垂直握把 + 激光 + 消音器 + 满弹匣）。
+- 目录数据资产：`/Game/PVP/Data/DA_PVP_WeaponAttachmentCatalog`（8 个槽位定义 + 两套预设），挂在 `BP_PVP_Weapon_AR` 的 `AttachmentCatalog`。
+- 类型契约：`Source/PVPDemo/Equipment/PVPWeaponAttachmentTypes.h`（`E_PVPWeaponAttachmentSlot` 等），`Content/PVP/Types/` 不再镜像同名枚举。
+- 组件命名 / 标签：`ATT_<Slot>` / `PVP.Attachment.<Slot>`；组件由 `PVPWeaponAssemblyBuilder` 写入并读回。
+
+**配件接口（`APVPWeaponActor`）**：
+
+| 接口 | 类型 | 行为 |
+| --- | --- | --- |
+| `RefreshAttachmentComponents()` | `BlueprintCallable` | 扫描自身 `PVP.Attachment.<Slot>` 标签重建槽位表（`OnConstruction` / `BeginPlay` 自动调用） |
+| `GetAttachmentComponent(Slot)` / `GetAttachmentMesh(Slot)` | `BlueprintPure` | 取装配组件 / 当前网格，未装配返回空 |
+| `SetAttachmentEnabled(Slot, bEnabled)` | `BlueprintCallable` | 显隐单件配件，保留网格 |
+| `ApplyAttachmentMesh(Slot, Mesh)` | `BlueprintCallable` | 运行时换单件网格，socket 与变换不变 |
+| `ApplyAttachmentLoadout(Name)` | `BlueprintCallable` | 按目录预设切换网格与显隐，返回更新的槽位数 |
+
 ---
 
 ## 4. 启动与运行时入口
@@ -152,8 +182,11 @@ LogPVPEquipmentComponent: <component>: equipped <weapon> on <character>.
 - **3P**：`Mesh3P` 组件已存在但隐藏，无 3P 角色网格与可见性管理。
 - **网络**：无复制、无服务器权威装备状态。
 - **武器切换 / 多武器槽**：`UPVPEquipmentComponent` 只维护一把当前武器。
-- **武器 DataAsset**：当前用 Actor 级配置属性，尚未落地规划中的 `PVPWeaponDefinition`。
+- **武器 DataAsset**：当前用 Actor 级配置属性，尚未落地规划中的 `PVPWeaponDefinition`；配件侧已有 `DA_PVP_WeaponAttachmentCatalog`。
 - **瞄准 / 后坐 / 枪口特效**：`GetMuzzleLocation` 已提供，但未接 Niagara / 音效。
+- **配件玩法**：已实现分类、槽位切换接口与 `Basic` / `Tactical` 两套装配，未接配件 UI、数值加成与拾取式换装。
+- **3P 配件**：`Mesh3P` 未挂配件，3P 角色落地时再补。
+- **弹匣动画**：装配用静态满弹匣；换弹下坠需改用骨骼弹匣并单独接 AnimClass。
 
 ---
 
@@ -163,7 +196,9 @@ LogPVPEquipmentComponent: <component>: equipped <weapon> on <character>.
 | --- | --- | --- |
 | UBT 编译 | 编译 `PVPDemoEditor`，验证武器 Actor / 装备组件 / 构建器 | `UnrealEditor-PVPDemo.dll` |
 | `Content/Python/setup_pvp_weapon.py` | 生成武器 ABP / 武器 BP、给角色 ABP 加 `DefaultSlot`、放置关卡拾取物、逐项读回 | `Saved/PVPWeaponReport/report.json`、`report.md`、`weapon_abp_builder.json`、`slot_builder.json` |
-| `Content/Python/verify_pvp_asset_layout.py` | 校验 `Actors` 20、`Animation/AnimBP` 5、逻辑总数 80、旧路径零残留 | `Saved/PVPAssetReorgReport/verify.{json,md}` |
+| `Content/Python/reorg_pvp_weapon_attachments.py` | 把 20 个配件网格按槽位归入 `Attachments/<Group>/`；默认 dry-run，`PVP_ATTACHMENT_REORG_APPLY=1` 执行 | `Saved/PVPAttachmentReport/reorg.{json,md}` |
+| `Content/Python/setup_pvp_weapon_assembly.py` | 生成 / 更新配件目录数据资产、调用构建器装配（`Basic` / `Tactical`）、逐项读回、spawn 冒烟断言 socket | `Saved/PVPAttachmentReport/report.{json,md}`、`report_tactical.{json,md}`、`assembly_builder.json`、`readback_builder.json` |
+| `Content/Python/verify_pvp_asset_layout.py` | 校验 `Actors` 20、`Animation/AnimBP` 5、`Data` 2、逻辑总数 81、旧路径零残留 | `Saved/PVPAssetReorgReport/verify.{json,md}` |
 | `Content/Python/verify_pvp_game_framework.py` | 校验零第三方引用、地图武器拾取物数量与 Actor 总数 | `Saved/PVPGameFrameworkReport/verify.{json,md}` |
 | PIE 冒烟 | 走近 → 自动拾取 → 附着 → 移动 / 跳跃跟随 → Equip Montage | 无（手动，清单见 `Equipment-Dev.md` 第 6 节） |
 
@@ -187,6 +222,8 @@ UnrealEditor-Cmd.exe "D:/UE/Unreal Projects/PVPDemo/PVPDemo.uproject" -run=Pytho
 | 拾取 / 附着 / 丢弃行为变化 | 本文第 4 节 + `Equipment-Dev.md` 第 3 / 6 节 + `Equipment-Integration.md` 第 3 / 5 节 |
 | C++ 接口签名变化 | 本文第 3 节 + `Equipment-Integration.md` 第 4 / 7 节 |
 | 武器资产新增 / 改名 / 移动 | `Docs/Content-Structure.md` + `Content/Python/pvp_logic_layout.py` + 本文第 3 节 |
+| 配件槽位 / 插槽 / 候选网格 / 默认方案变化 | 本文第 3.4 节 + `Equipment-Attachments.md` 第 2 / 3 节 + `PVPWeaponAttachmentTypes.h` + `reorg_pvp_weapon_attachments.py` / `setup_pvp_weapon_assembly.py` |
+| 配件装配接口变化 | 本文第 3.4 节 + `Equipment-Integration.md` 第 4 / 7 节 |
 | 出现新坑点或校验步骤 | `Equipment-Dev.md` 第 5 / 6 节（踩坑四要素齐全） |
 | 新增本模块维护文档 | 本文第 2 节登记，命名 `Equipment-<主题>.md` |
 | 任何改动 | 三份文档文首「最后更新」刷新为当天日期 |

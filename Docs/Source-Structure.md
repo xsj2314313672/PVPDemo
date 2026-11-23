@@ -4,7 +4,7 @@
 
 > 说明：文中的"FPS 3C"是技术方案名称（第一人称射击品类），**工程代码统一使用 `PVP` 作为类与文件前缀**（如 `APVPCharacter`），导出宏为 `PVPDEMO_API`。
 
-> 当前状态：`Character/` 已落地 `PVPBaseCharacter.h/.cpp`（基础第一人称角色：胶囊与 Mesh 默认值对齐参考蓝图 `BP_TFA_BaseCharacter`，`CameraFP` 挂在 `head` 骨骼，已接入 Move / Look / Jump / Run 原生输入与走跑速度切换）；`Input/` 已落地 `PVPInputConfig`（Tag ↔ InputAction 数据资产）与 `PVPInputComponent`（按 Tag 绑定 Enhanced Input）；`GAS/` 已落地 `PVPGameplayTags`（仅 `InputTag.Move/Look/Jump/Run` 四个原生 Tag，其余 GAS 能力仍未搭建）；`Game/` 已落地 `PVPGameMode.h/.cpp` 与 `PVPPlayerController.h/.cpp`（会话与玩家入口：默认 Pawn / 玩家控制器、初始化与开场日志，PlayerController 在代码中默认加载并注入 `IMC_PVP_Default`）；`Animation/` 已落地 `PVPAnimInstanceBase.h/.cpp`（`UAnimInstance` 基类：游戏线程采样、动画线程计算 Move / Run / Jump locomotion 变量，供新建动画蓝图继承）与逻辑资产 `ABP_PVP_FP_Locomotion`（四状态 locomotion 图，已在 `BP_PVPBaseCharacter` 上接线；C++ 构造期默认仍为 `ABP_PVP_FP_BaseCharacter`）；`Equipment/` 已落地 `PVPWeaponActor.h/.cpp` 与 `PVPEquipmentComponent.h/.cpp`（1P/3P 双网格武器 Actor、靠近自动拾取、`ik_hand_gun` 附着、角色 / 武器成对 Montage），`PVPBaseCharacter` 构造期已挂 `EquipmentComponent`，逻辑资产新增 `BP_PVP_Weapon_AR` 与 `ABP_PVP_FP_Weapon_AR`；编辑器期工具模块 `Source/PVPDemoEditor/` 已落地资产引用重定向库与动画蓝图构建器（含武器 ABP 构建 / 原地 Slot 插入）。`Camera/`、`Camera/Modes/` 仍为空目录。本文其余内容为规划职责，按实际实现进度同步更新。
+> 当前状态：`Character/` 已落地 `PVPBaseCharacter.h/.cpp`（基础第一人称角色：胶囊与 Mesh 默认值对齐参考蓝图 `BP_TFA_BaseCharacter`，`CameraFP` 挂在 `head` 骨骼，已接入 Move / Look / Jump / Run 原生输入与走跑速度切换）；`Input/` 已落地 `PVPInputConfig`（Tag ↔ InputAction 数据资产）与 `PVPInputComponent`（按 Tag 绑定 Enhanced Input）；`GAS/` 已落地 `PVPGameplayTags`（仅 `InputTag.Move/Look/Jump/Run` 四个原生 Tag，其余 GAS 能力仍未搭建）；`Game/` 已落地 `PVPGameMode.h/.cpp` 与 `PVPPlayerController.h/.cpp`（会话与玩家入口：默认 Pawn / 玩家控制器、初始化与开场日志，PlayerController 在代码中默认加载并注入 `IMC_PVP_Default`）；`Animation/` 已落地 `PVPAnimInstanceBase.h/.cpp`（`UAnimInstance` 基类：游戏线程采样、动画线程计算 Move / Run / Jump locomotion 变量，供新建动画蓝图继承）与逻辑资产 `ABP_PVP_FP_Locomotion`（四状态 locomotion 图，已在 `BP_PVPBaseCharacter` 上接线；C++ 构造期默认仍为 `ABP_PVP_FP_BaseCharacter`）；`Equipment/` 已落地 `PVPWeaponActor.h/.cpp` 与 `PVPEquipmentComponent.h/.cpp`（1P/3P 双网格武器 Actor、靠近自动拾取、`ik_hand_gun` 附着、角色 / 武器成对 Montage），`PVPBaseCharacter` 构造期已挂 `EquipmentComponent`，逻辑资产新增 `BP_PVP_Weapon_AR` 与 `ABP_PVP_FP_Weapon_AR`；`Equipment/` 另落地配件槽类型与配件目录（`PVPWeaponAttachmentTypes.h`、`PVPWeaponAttachmentCatalog.h/.cpp`），武器 Actor 提供配件查询 / 显隐 / 换网格 / 应用预设接口，`BP_PVP_Weapon_AR` 已装配基础型 4 件配件；编辑器期工具模块 `Source/PVPDemoEditor/` 已落地资产引用重定向库、动画蓝图构建器（含武器 ABP 构建 / 原地 Slot 插入）与武器配件装配构建器（BP 组件树 + SCS socket 写入 + 读回）。`Camera/`、`Camera/Modes/` 仍为空目录。本文其余内容为规划职责，按实际实现进度同步更新。
 
 > **阶段说明**：项目处于初期，`Camera/` 与 `Camera/Modes/` 下规划的**相机模式栈仅为架构预留，当前阶段不实现、不接入**。初期先用简单相机方案（`CameraFP` 挂在角色 `head` 骨骼上，位置由第一人称动画驱动；视角旋转由 Controller 的 `ControlRotation` 提供，`bUsePawnControlRotation=true`）跑通角色与输入，待基础稳定后再引入模式栈。其他规划文件也均为后续阶段的落点。
 
@@ -22,13 +22,15 @@ Source/
 │   ├── Camera/                      相机层：相机组件（模式栈为预留，初期不实现；当前为空）
 │   │   └── Modes/                   相机模式子类（仅预留目录，空）
 │   ├── Animation/                   动画层：AnimInstance 基类（已有 PVPAnimInstanceBase；动画层 / 程序化动画未实现）
-│   ├── Equipment/                   装备层：武器 Actor、装备组件（已有 PVPWeaponActor.h/.cpp、PVPEquipmentComponent.h/.cpp）
+│   ├── Equipment/                   装备层：武器 Actor、装备组件、配件槽类型与配件目录（已有 PVPWeaponActor、PVPEquipmentComponent、PVPWeaponAttachmentTypes、PVPWeaponAttachmentCatalog）
 │   ├── Input/                       输入层：Tag ↔ InputAction 配置与绑定组件（已有 PVPInputConfig、PVPInputComponent）
 │   └── GAS/                         技能层：GAS 基础、Montage 任务、GameplayTag（已有 PVPGameplayTags，仅输入 Tag）
 └── PVPDemoEditor/                   编辑器期模块（Type: Editor，仅编辑器加载，不进入打包）
     ├── PVPDemoEditor.Build.cs       编辑器模块依赖：UnrealEd / AssetTools / AssetRegistry / Projects
     ├── PVPDemoEditor.cpp / .h       模块入口（IMPLEMENT_MODULE）
-    └── PVPAssetRemapLibrary.h/.cpp  资产引用批量重定向工具（供 `Content/Python/` 脚本调用）
+    ├── PVPAssetRemapLibrary.h/.cpp  资产引用批量重定向工具（供 `Content/Python/` 脚本调用）
+    ├── PVPAnimBlueprintBuilder.h/.cpp   动画蓝图构建器（locomotion 四状态 + 武器 ABP + 原地 Slot）
+    └── PVPWeaponAssemblyBuilder.h/.cpp  武器配件装配构建器（BP 组件树 + SCS socket 写入 + 读回报告）
 ```
 
 整体遵循**单向数据流**：
@@ -118,17 +120,21 @@ Source/
 ### 2.4 `Equipment/` — 装备层（已实现）
 
 - **分类**：玩法数据 / 装备与武器
-- **当前作用**：武器 Actor 同时持有 1P/3P 网格（3P 暂隐藏），负责拾取触发、附着 / 卸下 / 丢弃与成对 Montage；装备组件维护"一次一把"当前武器。武器配置采用 Actor 级属性，DataAsset 定义留待多武器阶段。
+- **当前作用**：武器 Actor 同时持有 1P/3P 网格（3P 暂隐藏），负责拾取触发、附着 / 卸下 / 丢弃与成对 Montage；装备组件维护"一次一把"当前武器。武器配置采用 Actor 级属性；配件槽位类型与配件目录已落地（`PVPWeaponAttachmentTypes.h` / `PVPWeaponAttachmentCatalog.h/.cpp`），完整武器 DataAsset 仍留待多武器阶段。
 
 | 文件 | 职责 |
 | --- | --- |
-| `PVPWeaponActor.h/.cpp`（**已实现**） | `APVPWeaponActor`：`SceneRoot` + `Mesh1P` / `Mesh3P` + `PickupSphere`；Actor 级网格 / AnimClass / 挂点 / 拾取半径 / 三组成对 Montage 配置，`OnConstruction` 应用；自动拾取、`ik_hand_gun` 附着、丢弃冷却、枪口查询、1P/3P 切换 |
+| `PVPWeaponActor.h/.cpp`（**已实现**） | `APVPWeaponActor`：`SceneRoot` + `Mesh1P` / `Mesh3P` + `PickupSphere`；Actor 级网格 / AnimClass / 挂点 / 拾取半径 / 三组成对 Montage 配置，`OnConstruction` 应用；自动拾取、`ik_hand_gun` 附着、丢弃冷却、枪口查询、1P/3P 切换；`OnConstruction` / `BeginPlay` 扫描带 `PVP.Attachment.<Slot>` 标签的组件建槽位表，提供配件查询 / 显隐 / 换网格 / 应用预设接口 |
 | `PVPEquipmentComponent.h/.cpp`（**已实现**） | `UPVPEquipmentComponent`：`CurrentWeapon`、"一次一把"、`EquipWeapon` / `UnequipCurrentWeapon` / `DropCurrentWeapon`；只依赖 `ACharacter` 与武器 Actor |
+| `PVPWeaponAttachmentTypes.h`（**已实现**） | 配件槽位契约的唯一事实来源：`E_PVPWeaponAttachmentSlot`（None / Handguard / FrontSight / RearSight / Optic / ForeGrip / Muzzle / Laser / Magazine）、`FPVPWeaponAttachmentSpec`、`FPVPWeaponAttachmentOption`、`FPVPWeaponAttachmentSlotDefinition`、`FPVPWeaponAttachmentLoadout`，以及 `ATT_<Slot>` 命名、`PVP.Attachment.<Slot>` 标签、默认 socket 与父级映射的辅助函数 |
+| `PVPWeaponAttachmentCatalog.h/.cpp`（**已实现**） | `UPVPWeaponAttachmentCatalog : UDataAsset`：全量槽位定义（含每个槽位的候选网格）与 `Basic` / `Tactical` 两套预设，提供按槽位 / 按预设查询与 `BuildLoadoutAssembly` / `BuildDefaultAssembly` |
 | `PVPWeaponDefinition.h` | 仍为规划：DataAsset 化的武器网格 / 动画层 / Montage / 手感参数，供多武器阶段使用 |
 
-**协作关系**：`Character → Equipment` 单向，角色构造期持有 `EquipmentComponent`；`Equipment/` 向 `Animation/` 发起 `Montage_Play`（`DefaultSlot`），为后续 `GAS/` 提供 `GetMuzzleLocation` / `GetActiveMesh`；武器 Actor 推荐不复制，各端本地生成。对应逻辑资产 `BP_PVP_Weapon_AR`、`ABP_PVP_FP_Weapon_AR` 与地图拾取物由 `Content/Python/setup_pvp_weapon.py` 生成。
+**协作关系**：`Character → Equipment` 单向，角色构造期持有 `EquipmentComponent`；`Equipment/` 向 `Animation/` 发起 `Montage_Play`（`DefaultSlot`），为后续 `GAS/` 提供 `GetMuzzleLocation` / `GetActiveMesh`；武器 Actor 推荐不复制，各端本地生成。对应逻辑资产 `BP_PVP_Weapon_AR`、`ABP_PVP_FP_Weapon_AR` 与地图拾取物由 `Content/Python/setup_pvp_weapon.py` 生成；配件网格归位由 `Content/Python/reorg_pvp_weapon_attachments.py` 完成，配件目录与蓝图内装配由 `Content/Python/setup_pvp_weapon_assembly.py` + `PVPWeaponAssemblyBuilder` 完成。
 
-> 装备模块文档见 `Docs/Equipment/`：`README.md`（导航与武器 / 装备 / Montage 权威表）、`Equipment-Dev.md`（生成 SOP 与踩坑）、`Equipment-Integration.md`（依赖方向与接口契约）。
+> **类型落点契约**：与 C++ 契约绑定的类型定义随源码层（本例为 `Equipment/PVPWeaponAttachmentTypes.h`），`Content/PVP/Types/` 只放蓝图侧独立类型资产（`E_PVP_*` / `S_PVP_*` 蓝图资产）。两者不得互相镜像同一枚举，避免双份事实来源漂移。
+
+> 装备模块文档见 `Docs/Equipment/`：`README.md`（导航与武器 / 装备 / Montage / 配件权威表）、`Equipment-Dev.md`（生成与装配 SOP、踩坑）、`Equipment-Integration.md`（依赖方向与接口契约）、`Equipment-Attachments.md`（配件分类、插槽映射、两套装配方案与换装 SOP）。
 
 ---
 
@@ -190,8 +196,9 @@ Source/
 | --- | --- |
 | `PVPAssetRemapLibrary.h/.cpp`（**已实现**） | `UBlueprintFunctionLibrary`，暴露 `RemapAssetReferences(旧包路径[], 新包路径[], 扫描前缀[], 报告路径)`：按映射构造 `FReplaceRequest` 批量调用 `ObjectTools::ForceReplaceReferences`，只在前缀命中的包内替换，随后标脏保存并写报告。供 `Content/Python/` 脚本驱动，用于"自有资产去第三方依赖"的一次性重定向 |
 | `PVPAnimBlueprintBuilder.h/.cpp`（**已实现**） | `UBlueprintFunctionLibrary`，`BuildLocomotionAnimBlueprint(...)`：用 `UAnimBlueprintFactory` 创建 `ABP_PVP_FP_Locomotion`，用 `FGraphNodeCreator` 搭 `Ground` / `JumpStart` / `Falling` / `Land` 四状态、`BlendListByBool`（Run 混合）、`BlendSpacePlayer`、`SequencePlayer` 与 6 条过渡规则，编译并写 JSON 报告。供 `setup_pvp_anim_blueprint.py` 调用 |
+| `PVPWeaponAssemblyBuilder.h/.cpp`（**已实现**） | `UBlueprintFunctionLibrary`，`AssembleAttachments(BlueprintPath, Specs, bRemoveUnlisted, ReportPath)` / `ReadbackAttachments(...)`：按槽位在武器蓝图 SCS 中增改 `ATT_<Slot>` `UStaticMeshComponent`、写 `USCS_Node::AttachToName`（socket 挂点只能 C++ 写）、设置 `PVP.Attachment.<Slot>` 标签与内置网格、编译保存，并输出写入 / 读回 JSON。供 `setup_pvp_weapon_assembly.py` 调用 |
 
-**依赖**：`Core` / `CoreUObject` / `Engine` / `UnrealEd` / `AssetTools` / `AssetRegistry` / `Projects`；新增动画图构建依赖 `AnimGraph` / `AnimGraphRuntime` / `BlueprintGraph`。**运行时模块 `PVPDemo.Build.cs` 无新增依赖**（`AGameModeBase`、`APlayerController` 均属 `Engine`）。
+**依赖**：`Core` / `CoreUObject` / `Engine` / `UnrealEd` / `AssetTools` / `AssetRegistry` / `Projects`；动画图构建依赖 `AnimGraph` / `AnimGraphRuntime` / `BlueprintGraph`；配件装配构建器在 `PublicDependencyModuleNames` 新增 `PVPDemo`（共享 `E_PVPWeaponAttachmentSlot` / `FPVPWeaponAttachmentSpec`，方向为 Editor → Runtime 单向）。**运行时模块 `PVPDemo.Build.cs` 无新增依赖**（`AGameModeBase`、`APlayerController`、`UStaticMeshComponent`、`UDataAsset` 均属 `Engine`）。
 
 ---
 
@@ -215,6 +222,7 @@ Source/
 - **动画依赖结论**：新增 `Animation/PVPAnimInstanceBase` 只用已声明的 `Engine` 与 `AnimGraphRuntime`（`UKismetAnimationLibrary::CalculateDirection`），**无新增模块依赖**，`PVPDemo.Build.cs` 未修改。
 - **装备依赖结论**：新增 `Equipment/` 只用 `Engine`（`USkeletalMeshComponent` / `UAnimInstance` / `UAnimMontage` / `USphereComponent`），**运行时 `PVPDemo.Build.cs` 无新增依赖**；依赖方向 `Character → Equipment` 单向，`Equipment/` 不包含 `Character/` 具体类，也不依赖 `Game/` / `GAS/`；编辑器构建器沿用既有 `AnimGraph` / `AnimGraphRuntime` / `BlueprintGraph`。
 - **动画蓝图构建依赖结论**：`PVPDemoEditor.Build.cs` 新增 `AnimGraph` / `AnimGraphRuntime` / `BlueprintGraph`（仅编辑器期，用于 `UAnimGraphNode_*`、状态机与 K2 规则节点）；运行时模块不引入这些依赖。
+- **配件依赖结论**：`Equipment/PVPWeaponAttachmentTypes.h`、`Equipment/PVPWeaponAttachmentCatalog.h/.cpp` 与 `APVPWeaponActor` 的配件接口只用 `Engine`（`UDataAsset` / `UStaticMeshComponent` / `UStaticMesh`），**运行时 `PVPDemo.Build.cs` 无新增依赖**；编辑器构建器直接操作 `USimpleConstructionScript` / `USCS_Node`（`Engine` + `UnrealEd`），并在 `PVPDemoEditor.Build.cs` 的 `PublicDependencyModuleNames` 新增 `PVPDemo`。依赖方向保持 `Editor → Runtime` 单向，运行时不感知编辑器类型。
 - **头文件**：优先前置声明，具体类型包含放在 `.cpp`；仅在需要反射处使用 `UCLASS/USTRUCT/UENUM`。
 
 ---
@@ -224,6 +232,7 @@ Source/
 - `Content/PVPDemo/`：工程自有**美术**资产目录，按功能模块与源码分层相互对应；逻辑资产（蓝图、DataAsset、GA、地图等）不放入该目录，统一放 `Content/PVP/`。
 - `Content/PVP/`：工程自有**逻辑**资产目录，按职责分为 `Animation/`（动画蓝图 / 动画接口 / 动画通知）、`Actors/`（从第三方复制的 Actor 蓝图）、`Characters/`（角色蓝图）、`Data/`（数据表）、`Game/`（游戏模式与控制器蓝图）、`Input/`（IA / IMC / 输入配置）、`Maps/`（关卡）、`Types/`（枚举与结构体）、`UI/`（控件蓝图），详见 `Docs/Content-Structure.md`。两个根均可引用 `/Script/PVPDemo.*` 原生类，且均不再引用 `/Game/InfimaGames`。
 - `Content/InfimaGames/TacticalFPSAnimations/`：已导入的第三方 FPS 动画包，提供骨骼、武器动画、IMC/IA 等资产；实际 1P 网格可用挂点为 `ik_hand_gun`（`weapon_r` 未落到 `SKM_PVP_FP_Manny_Simple`），武器 Socket 为 `SOCKET_Muzzle` / `SOCKET_Sight_Rear`，接入前需核查是否满足方案要求。
+- `Content/PVPDemo/Weapons/AssaultRifle/`：`Meshes/` 只留枪身本体与弹药 / 枪箱，散件按槽位归入 `Attachments/<Group>/`（Handguard / Sight / Optic / Grip / Muzzle / Laser / Magazine）；槽位与插槽的对应关系见 `Docs/Equipment/Equipment-Attachments.md`，落位由 `Content/Python/reorg_pvp_weapon_attachments.py` 幂等维护。
 
 ---
 

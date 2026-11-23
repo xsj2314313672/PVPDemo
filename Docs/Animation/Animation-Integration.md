@@ -137,7 +137,7 @@
 | `UPVPAnimBlueprintBuilder::EnsureMontageSlot(...)` | 同上 | 对已有 ABP 原地插入 `DefaultSlot`（幂等、不删除资产），写 `Saved/PVPWeaponReport/slot_builder.json` |
 | `Content/Python/setup_pvp_anim_blueprint.py` | `Content/Python/` | 资产校验、旧目标清理、调用构建器、编译 / 保存 / 读回、写 Markdown 报告 |
 | `Content/Python/setup_pvp_weapon.py` | `Content/Python/` | 武器 ABP / 角色 Slot / 武器 BP / 地图拾取物生成与读回，写 `Saved/PVPWeaponReport/report.{json,md}` |
-| `pvp_logic_layout.py` | `Content/Python/` | `ABP_` 路由到 `Animation/AnimBP`；期望资产含 `ABP_PVP_FP_Locomotion` / `ABP_PVP_FP_Weapon_AR`，总数 80 |
+| `pvp_logic_layout.py` | `Content/Python/` | `ABP_` 路由到 `Animation/AnimBP`；期望资产含 `ABP_PVP_FP_Locomotion` / `ABP_PVP_FP_Weapon_AR`，逻辑资产总数 81（`Data` 2） |
 
 - 构建器属于编辑器模块，不进入打包；运行时模块不依赖 `AnimGraph` / `BlueprintGraph`。
 - 生成物路径由 `pvp_logic_layout.target_dir_for_asset_name` 决定，禁止在脚本中硬编码 `Characters/` 或 `Actors/`。
