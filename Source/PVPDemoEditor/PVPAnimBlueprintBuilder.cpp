@@ -15,6 +15,7 @@
 #include "AnimGraphNode_BlendSpacePlayer.h"
 #include "AnimGraphNode_Root.h"
 #include "AnimGraphNode_SequencePlayer.h"
+#include "AnimGraphNode_Slot.h"
 #include "AnimGraphNode_StateMachine.h"
 #include "AnimGraphNode_StateResult.h"
 #include "AnimGraphNode_TransitionResult.h"
@@ -52,6 +53,10 @@ namespace
 	const FName PVPAnimResultPinName(TEXT("Result"));
 	const FName PVPAnimTransitionRulePinName(TEXT("bCanEnterTransition"));
 	const FName PVPAnimActiveValuePinName(TEXT("bActiveValue"));
+	const FName PVPAnimSlotSourcePinName(TEXT("Source"));
+
+	/** Montage slot shared by the character and weapon animation blueprints (all migrated montages use it). */
+	const FName PVPDefaultMontageSlotName(TEXT("DefaultSlot"));
 
 	bool WriteJsonReport(const FString& ReportPath, const TSharedRef<FJsonObject>& Report)
 	{
@@ -122,6 +127,58 @@ namespace
 		Node->Node.SetPlayRate(1.0f);
 		NodeCreator.Finalize();
 		return Node;
+	}
+
+	UAnimGraphNode_Slot* CreateSlotNode(UEdGraph* Graph, const FName SlotName, int32 PosX, int32 PosY,
+		const FString& Context)
+	{
+		if (!Graph)
+		{
+			UE_LOG(LogPVPAnimBlueprintBuilder, Error, TEXT("%s: invalid graph"), *Context);
+			return nullptr;
+		}
+
+		FGraphNodeCreator<UAnimGraphNode_Slot> NodeCreator(*Graph);
+		UAnimGraphNode_Slot* Node = NodeCreator.CreateNode(false);
+		Node->NodePosX = PosX;
+		Node->NodePosY = PosY;
+		Node->Node.SlotName = SlotName;
+		NodeCreator.Finalize();
+		return Node;
+	}
+
+	UAnimationGraph* FindAnimGraph(UAnimBlueprint* AnimBlueprint)
+	{
+		if (!AnimBlueprint)
+		{
+			return nullptr;
+		}
+
+		for (UEdGraph* Graph : AnimBlueprint->FunctionGraphs)
+		{
+			if (Graph && Graph->GetFName() == UEdGraphSchema_K2::GN_AnimGraph)
+			{
+				return Cast<UAnimationGraph>(Graph);
+			}
+		}
+		return nullptr;
+	}
+
+	UAnimGraphNode_Root* FindRootNode(UAnimationGraph* AnimGraph)
+	{
+		if (!AnimGraph)
+		{
+			return nullptr;
+		}
+
+		for (UEdGraphNode* Node : AnimGraph->Nodes)
+		{
+			if (UAnimGraphNode_Root* Root = Cast<UAnimGraphNode_Root>(Node))
+			{
+				return Root;
+			}
+		}
+		return nullptr;
 	}
 
 	UAnimGraphNode_BlendSpacePlayer* CreateBlendSpacePlayer(UEdGraph* Graph, UBlendSpace* BlendSpace,
@@ -488,10 +545,27 @@ UAnimBlueprint* UPVPAnimBlueprintBuilder::BuildLocomotionAnimBlueprint(
 		return nullptr;
 	}
 
+	// Montage slot: locomotion montages (reload / fire / inspect) are authored against DefaultSlot,
+	// so the state machine pose must flow through the slot before reaching the root.
+	UAnimGraphNode_Slot* MontageSlotNode = CreateSlotNode(
+		AnimGraph, PVPDefaultMontageSlotName, 720, 0, TEXT("montage slot"));
+	if (!MontageSlotNode)
+	{
+		return nullptr;
+	}
+
 	if (!ConnectPins(AnimGraph,
 		FindPin(StateMachineNode, PVPAnimPosePinName, EGPD_Output),
+		MontageSlotNode->FindPin(PVPAnimSlotSourcePinName, EGPD_Input),
+		TEXT("state machine -> montage slot")))
+	{
+		return nullptr;
+	}
+
+	if (!ConnectPins(AnimGraph,
+		MontageSlotNode->FindPin(PVPAnimPosePinName, EGPD_Output),
 		FindPin(RootNode, PVPAnimResultPinName, EGPD_Input),
-		TEXT("state machine -> root")))
+		TEXT("montage slot -> root")))
 	{
 		return nullptr;
 	}
@@ -719,6 +793,10 @@ UAnimBlueprint* UPVPAnimBlueprintBuilder::BuildLocomotionAnimBlueprint(
 		IsLinked(RootNode->FindPin(PVPAnimResultPinName, EGPD_Input)));
 	Wiring->SetBoolField(TEXT("state_machine_pose"),
 		IsLinked(StateMachineNode->FindPin(PVPAnimPosePinName, EGPD_Output)));
+	Wiring->SetBoolField(TEXT("montage_slot_source"),
+		IsLinked(MontageSlotNode->FindPin(PVPAnimSlotSourcePinName, EGPD_Input)));
+	Wiring->SetBoolField(TEXT("montage_slot_pose"),
+		IsLinked(MontageSlotNode->FindPin(PVPAnimPosePinName, EGPD_Output)));
 	Wiring->SetBoolField(TEXT("entry_to_ground"), IsLinked(GroundState->GetInputPin()));
 	Wiring->SetBoolField(TEXT("ground_blendspace_x"),
 		IsLinked(BlendSpaceNode->FindPin(TEXT("X"), EGPD_Input)));
@@ -765,6 +843,7 @@ UAnimBlueprint* UPVPAnimBlueprintBuilder::BuildLocomotionAnimBlueprint(
 	Report->SetStringField(TEXT("skeleton"), ObjectPathName(AnimBlueprint->TargetSkeleton));
 	Report->SetStringField(TEXT("preview_mesh"), ObjectPathName(PreviewMesh));
 	Report->SetStringField(TEXT("ground_blendspace"), ObjectPathName(GroundBlendSpace));
+	Report->SetStringField(TEXT("montage_slot"), MontageSlotNode->Node.SlotName.ToString());
 	Report->SetNumberField("blend_axis_count", AxisCount);
 
 	TArray<TSharedPtr<FJsonValue>> AxisRecords;
@@ -815,4 +894,296 @@ UAnimBlueprint* UPVPAnimBlueprintBuilder::BuildLocomotionAnimBlueprint(
 	}
 
 	return AnimBlueprint;
+}
+
+UAnimBlueprint* UPVPAnimBlueprintBuilder::BuildWeaponAnimBlueprint(
+	const FString& AssetPath,
+	USkeleton* Skeleton,
+	USkeletalMesh* PreviewMesh,
+	UAnimSequence* ReferencePose,
+	FName MontageSlotName,
+	const FString& ReportPath)
+{
+	if (!Skeleton || !PreviewMesh || !ReferencePose)
+	{
+		UE_LOG(LogPVPAnimBlueprintBuilder, Error, TEXT("missing skeleton / mesh / reference pose"));
+		return nullptr;
+	}
+	if (!FPackageName::IsValidLongPackageName(AssetPath))
+	{
+		UE_LOG(LogPVPAnimBlueprintBuilder, Error, TEXT("invalid package path: %s"), *AssetPath);
+		return nullptr;
+	}
+	if (FindObject<UObject>(nullptr, *AssetPath) != nullptr)
+	{
+		UE_LOG(LogPVPAnimBlueprintBuilder, Error,
+			TEXT("%s is still loaded; the Python driver must remove it first"), *AssetPath);
+		return nullptr;
+	}
+	if (PreviewMesh->GetSkeleton() != Skeleton || ReferencePose->GetSkeleton() != Skeleton)
+	{
+		UE_LOG(LogPVPAnimBlueprintBuilder, Error,
+			TEXT("weapon animation dependencies do not share the requested skeleton"));
+		return nullptr;
+	}
+
+	if (MontageSlotName.IsNone())
+	{
+		MontageSlotName = PVPDefaultMontageSlotName;
+	}
+
+	const FString PackagePath = FPaths::GetPath(AssetPath);
+	const FString AssetName = FPaths::GetCleanFilename(AssetPath);
+	UE_LOG(LogPVPAnimBlueprintBuilder, Log, TEXT("creating weapon AnimBlueprint %s (slot=%s)"),
+		*AssetPath, *MontageSlotName.ToString());
+
+	UAnimBlueprintFactory* Factory = NewObject<UAnimBlueprintFactory>();
+	Factory->ParentClass = UAnimInstance::StaticClass();
+	Factory->TargetSkeleton = Skeleton;
+	Factory->PreviewSkeletalMesh = PreviewMesh;
+	Factory->BlueprintType = BPTYPE_Normal;
+
+	IAssetTools& AssetTools = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools").Get();
+	UObject* CreatedAsset = AssetTools.CreateAsset(AssetName, PackagePath, UAnimBlueprint::StaticClass(), Factory);
+	UAnimBlueprint* AnimBlueprint = Cast<UAnimBlueprint>(CreatedAsset);
+	if (!AnimBlueprint)
+	{
+		UE_LOG(LogPVPAnimBlueprintBuilder, Error, TEXT("failed to create %s"), *AssetPath);
+		return nullptr;
+	}
+
+	UAnimationGraph* AnimGraph = FindAnimGraph(AnimBlueprint);
+	UAnimGraphNode_Root* RootNode = FindRootNode(AnimGraph);
+	if (!AnimGraph || !RootNode)
+	{
+		UE_LOG(LogPVPAnimBlueprintBuilder, Error, TEXT("%s AnimGraph or root node is missing"), *AssetPath);
+		return nullptr;
+	}
+
+	UAnimGraphNode_SequencePlayer* ReferenceNode = CreateSequencePlayer(
+		AnimGraph, ReferencePose, true, -420, 0, TEXT("weapon reference pose"));
+	UAnimGraphNode_Slot* SlotNode = CreateSlotNode(
+		AnimGraph, MontageSlotName, 0, 0, TEXT("weapon montage slot"));
+	if (!ReferenceNode || !SlotNode)
+	{
+		return nullptr;
+	}
+
+	if (!ConnectPins(AnimGraph,
+		ReferenceNode->FindPin(PVPAnimPosePinName, EGPD_Output),
+		SlotNode->FindPin(PVPAnimSlotSourcePinName, EGPD_Input),
+		TEXT("reference pose -> montage slot")))
+	{
+		return nullptr;
+	}
+
+	if (!ConnectPins(AnimGraph,
+		SlotNode->FindPin(PVPAnimPosePinName, EGPD_Output),
+		RootNode->FindPin(PVPAnimResultPinName, EGPD_Input),
+		TEXT("montage slot -> root")))
+	{
+		return nullptr;
+	}
+
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(AnimBlueprint);
+	AnimBlueprint->GetOutermost()->MarkPackageDirty();
+
+	FCompilerResultsLog CompileLog;
+	FKismetEditorUtilities::CompileBlueprint(AnimBlueprint, EBlueprintCompileOptions::None, &CompileLog);
+	const bool bCompiled = (AnimBlueprint->Status == BS_UpToDate
+		|| AnimBlueprint->Status == BS_UpToDateWithWarnings)
+		&& AnimBlueprint->GeneratedClass != nullptr
+		&& CompileLog.NumErrors == 0;
+
+	if (!bCompiled)
+	{
+		UE_LOG(LogPVPAnimBlueprintBuilder, Error, TEXT("weapon AnimBlueprint compile failed (%d errors, %d warnings)"),
+			CompileLog.NumErrors, CompileLog.NumWarnings);
+		for (const TSharedRef<FTokenizedMessage>& Message : CompileLog.Messages)
+		{
+			UE_LOG(LogPVPAnimBlueprintBuilder, Error, TEXT("  %s"), *Message->ToText().ToString());
+		}
+	}
+
+	TSharedRef<FJsonObject> Report = MakeShared<FJsonObject>();
+	Report->SetStringField(TEXT("asset_path"), AssetPath);
+	Report->SetStringField(TEXT("parent_class"),
+		AnimBlueprint->ParentClass ? AnimBlueprint->ParentClass->GetName() : TEXT("None"));
+	Report->SetStringField(TEXT("skeleton"), ObjectPathName(AnimBlueprint->TargetSkeleton));
+	Report->SetStringField(TEXT("preview_mesh"), ObjectPathName(PreviewMesh));
+	Report->SetStringField(TEXT("reference_pose"), ObjectPathName(ReferencePose));
+	Report->SetStringField(TEXT("montage_slot"), SlotNode->Node.SlotName.ToString());
+
+	TSharedPtr<FJsonObject> Wiring = MakeShared<FJsonObject>();
+	Wiring->SetBoolField(TEXT("reference_pose"),
+		ReferenceNode->FindPin(PVPAnimPosePinName, EGPD_Output) != nullptr
+		&& ReferenceNode->FindPin(PVPAnimPosePinName, EGPD_Output)->LinkedTo.Num() > 0);
+	Wiring->SetBoolField(TEXT("slot_source"),
+		SlotNode->FindPin(PVPAnimSlotSourcePinName, EGPD_Input) != nullptr
+		&& SlotNode->FindPin(PVPAnimSlotSourcePinName, EGPD_Input)->LinkedTo.Num() > 0);
+	Wiring->SetBoolField(TEXT("slot_pose"),
+		SlotNode->FindPin(PVPAnimPosePinName, EGPD_Output) != nullptr
+		&& SlotNode->FindPin(PVPAnimPosePinName, EGPD_Output)->LinkedTo.Num() > 0);
+	Wiring->SetBoolField(TEXT("root_pose"),
+		RootNode->FindPin(PVPAnimResultPinName, EGPD_Input) != nullptr
+		&& RootNode->FindPin(PVPAnimResultPinName, EGPD_Input)->LinkedTo.Num() > 0);
+	Report->SetObjectField(TEXT("wiring"), Wiring);
+	Report->SetBoolField("compiled", bCompiled);
+	Report->SetNumberField("compile_errors", CompileLog.NumErrors);
+	Report->SetNumberField("compile_warnings", CompileLog.NumWarnings);
+	Report->SetBoolField("generated_class", AnimBlueprint->GeneratedClass != nullptr);
+
+	if (!WriteJsonReport(ReportPath, Report))
+	{
+		UE_LOG(LogPVPAnimBlueprintBuilder, Warning, TEXT("failed to write report to %s"), *ReportPath);
+	}
+
+	return AnimBlueprint;
+}
+
+bool UPVPAnimBlueprintBuilder::EnsureMontageSlot(
+	const FString& AnimBlueprintPath,
+	FName MontageSlotName,
+	const FString& ReportPath)
+{
+	if (!FPackageName::IsValidLongPackageName(AnimBlueprintPath))
+	{
+		UE_LOG(LogPVPAnimBlueprintBuilder, Error, TEXT("invalid package path: %s"), *AnimBlueprintPath);
+		return false;
+	}
+
+	if (MontageSlotName.IsNone())
+	{
+		MontageSlotName = PVPDefaultMontageSlotName;
+	}
+
+	UAnimBlueprint* AnimBlueprint = LoadObject<UAnimBlueprint>(nullptr, *AnimBlueprintPath);
+	if (!AnimBlueprint)
+	{
+		UE_LOG(LogPVPAnimBlueprintBuilder, Error, TEXT("cannot load %s"), *AnimBlueprintPath);
+		return false;
+	}
+
+	UAnimationGraph* AnimGraph = FindAnimGraph(AnimBlueprint);
+	UAnimGraphNode_Root* RootNode = FindRootNode(AnimGraph);
+	UEdGraphPin* RootResultPin = RootNode ? RootNode->FindPin(PVPAnimResultPinName, EGPD_Input) : nullptr;
+	if (!AnimGraph || !RootNode || !RootResultPin)
+	{
+		UE_LOG(LogPVPAnimBlueprintBuilder, Error, TEXT("%s AnimGraph / root / result pin is missing"),
+			*AnimBlueprintPath);
+		return false;
+	}
+
+	UAnimGraphNode_Slot* SlotNode = nullptr;
+	for (UEdGraphNode* Node : AnimGraph->Nodes)
+	{
+		if (UAnimGraphNode_Slot* Candidate = Cast<UAnimGraphNode_Slot>(Node))
+		{
+			if (Candidate->Node.SlotName == MontageSlotName)
+			{
+				SlotNode = Candidate;
+				break;
+			}
+		}
+	}
+
+	const bool bFoundExisting = SlotNode != nullptr;
+	bool bCreated = false;
+	bool bWired = false;
+	bool bCompiled = false;
+	FCompilerResultsLog CompileLog;
+
+	if (bFoundExisting)
+	{
+		UEdGraphPin* SlotSourcePin = SlotNode->FindPin(PVPAnimSlotSourcePinName, EGPD_Input);
+		UEdGraphPin* SlotPosePin = SlotNode->FindPin(PVPAnimPosePinName, EGPD_Output);
+		bWired = SlotSourcePin && SlotSourcePin->LinkedTo.Num() > 0
+			&& SlotPosePin && SlotPosePin->LinkedTo.Contains(RootResultPin);
+		if (!bWired)
+		{
+			UE_LOG(LogPVPAnimBlueprintBuilder, Error,
+				TEXT("%s already has slot '%s' but it is not wired between its source and the root; "
+					"delete and rebuild the asset instead."),
+				*AnimBlueprintPath, *MontageSlotName.ToString());
+		}
+		else
+		{
+			// Idempotent re-run: the slot already exists and is wired, do not touch the asset.
+			bCompiled = AnimBlueprint->Status == BS_UpToDate
+				|| AnimBlueprint->Status == BS_UpToDateWithWarnings;
+		}
+	}
+	else
+	{
+		UEdGraphPin* UpstreamPin = RootResultPin->LinkedTo.Num() > 0 ? RootResultPin->LinkedTo[0] : nullptr;
+		if (!UpstreamPin)
+		{
+			UE_LOG(LogPVPAnimBlueprintBuilder, Error,
+				TEXT("%s root has no upstream pose to insert slot '%s' into."),
+				*AnimBlueprintPath, *MontageSlotName.ToString());
+			return false;
+		}
+
+		SlotNode = CreateSlotNode(AnimGraph, MontageSlotName,
+			RootNode->NodePosX - 320, RootNode->NodePosY, TEXT("ensure montage slot"));
+		if (!SlotNode)
+		{
+			return false;
+		}
+
+		RootResultPin->BreakAllPinLinks(true);
+		if (!ConnectPins(AnimGraph, UpstreamPin,
+			SlotNode->FindPin(PVPAnimSlotSourcePinName, EGPD_Input),
+			TEXT("ensure montage slot: upstream -> slot")))
+		{
+			return false;
+		}
+		if (!ConnectPins(AnimGraph,
+			SlotNode->FindPin(PVPAnimPosePinName, EGPD_Output),
+			RootResultPin,
+			TEXT("ensure montage slot: slot -> root")))
+		{
+			return false;
+		}
+
+		bCreated = true;
+		bWired = true;
+
+		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(AnimBlueprint);
+		AnimBlueprint->GetOutermost()->MarkPackageDirty();
+		FKismetEditorUtilities::CompileBlueprint(AnimBlueprint, EBlueprintCompileOptions::None, &CompileLog);
+		bCompiled = (AnimBlueprint->Status == BS_UpToDate
+			|| AnimBlueprint->Status == BS_UpToDateWithWarnings)
+			&& AnimBlueprint->GeneratedClass != nullptr
+			&& CompileLog.NumErrors == 0;
+
+		if (!bCompiled)
+		{
+			UE_LOG(LogPVPAnimBlueprintBuilder, Error,
+				TEXT("%s slot insertion compile failed (%d errors, %d warnings)"),
+				*AnimBlueprintPath, CompileLog.NumErrors, CompileLog.NumWarnings);
+			for (const TSharedRef<FTokenizedMessage>& Message : CompileLog.Messages)
+			{
+				UE_LOG(LogPVPAnimBlueprintBuilder, Error, TEXT("  %s"), *Message->ToText().ToString());
+			}
+		}
+	}
+
+	TSharedRef<FJsonObject> Report = MakeShared<FJsonObject>();
+	Report->SetStringField(TEXT("asset_path"), AnimBlueprintPath);
+	Report->SetStringField(TEXT("montage_slot"), MontageSlotName.ToString());
+	Report->SetBoolField(TEXT("found_existing"), bFoundExisting);
+	Report->SetBoolField(TEXT("created"), bCreated);
+	Report->SetBoolField(TEXT("wired"), bWired);
+	Report->SetBoolField(TEXT("compiled"), bCompiled);
+	Report->SetNumberField(TEXT("compile_errors"), CompileLog.NumErrors);
+	Report->SetNumberField(TEXT("compile_warnings"), CompileLog.NumWarnings);
+	Report->SetBoolField(TEXT("generated_class"), AnimBlueprint->GeneratedClass != nullptr);
+
+	if (!WriteJsonReport(ReportPath, Report))
+	{
+		UE_LOG(LogPVPAnimBlueprintBuilder, Warning, TEXT("failed to write report to %s"), *ReportPath);
+	}
+
+	return bWired && bCompiled;
 }

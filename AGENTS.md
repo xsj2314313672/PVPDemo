@@ -9,7 +9,7 @@
 ## 1. 项目速览
 
 - **定位**：Unreal Engine 5 第一人称 PVP 射击玩法 Demo，目标是跑通 FPS 3C（Character / Camera / Control），再逐步接入 GAS、装备与动画系统。
-- **源码**：`Source/PVPDemo/`，运行时模块名 `PVPDemo`，导出宏 `PVPDEMO_API`。已落地 `Character/PVPBaseCharacter.h/.cpp`（基础 1P 角色 + `CameraFP`，已接 Move / Look / Jump / Run 输入与走跑速度切换）、`Input/PVPInputConfig` 与 `Input/PVPInputComponent`（Lyra 式 Tag ↔ InputAction 配置与绑定）、`GAS/PVPGameplayTags`（仅 `InputTag.*`）与 `Game/PVPGameMode`、`Game/PVPPlayerController`（会话与玩家入口，控制器在代码中默认注入 `IMC_PVP_Default`）；`Animation/PVPAnimInstanceBase`（`UAnimInstance` 基类，线程安全采集 Move / Run / Jump 基础 locomotion 变量）与逻辑资产 `ABP_PVP_FP_Locomotion`（四状态 locomotion 图，父类 `UPVPAnimInstanceBase`，已通过 `BP_PVPBaseCharacter` 的 Mesh AnimClass 覆盖接线；C++ 构造期默认仍是 `ABP_PVP_FP_BaseCharacter`）；另含编辑器期模块 `Source/PVPDemoEditor/`（资产引用重定向工具 + 动画蓝图构建器，只进编辑器、不进打包）。`Camera/`、`Equipment/` 仍为规划中的空目录。
+- **源码**：`Source/PVPDemo/`，运行时模块名 `PVPDemo`，导出宏 `PVPDEMO_API`。已落地 `Character/PVPBaseCharacter.h/.cpp`（基础 1P 角色 + `CameraFP`，已接 Move / Look / Jump / Run 输入与走跑速度切换）、`Input/PVPInputConfig` 与 `Input/PVPInputComponent`（Lyra 式 Tag ↔ InputAction 配置与绑定）、`GAS/PVPGameplayTags`（仅 `InputTag.*`）与 `Game/PVPGameMode`、`Game/PVPPlayerController`（会话与玩家入口，控制器在代码中默认注入 `IMC_PVP_Default`）；`Animation/PVPAnimInstanceBase`（`UAnimInstance` 基类，线程安全采集 Move / Run / Jump 基础 locomotion 变量）与逻辑资产 `ABP_PVP_FP_Locomotion`（四状态 locomotion 图，父类 `UPVPAnimInstanceBase`，已通过 `BP_PVPBaseCharacter` 的 Mesh AnimClass 覆盖接线；C++ 构造期默认仍是 `ABP_PVP_FP_BaseCharacter`）；`Equipment/PVPWeaponActor` 与 `Equipment/PVPEquipmentComponent`（1P/3P 双网格武器 Actor、靠近自动拾取、附着到角色 `ik_hand_gun`、角色 / 武器成对 Montage），`BP_PVPBaseCharacter` 继承的 C++ 角色构造期已创建 `EquipmentComponent`；另含编辑器期模块 `Source/PVPDemoEditor/`（资产引用重定向工具 + 动画蓝图构建器，只进编辑器、不进打包）。`Camera/`、`Camera/Modes/` 仍为规划中的空目录。
 - **自有资产**：分两根。`Content/PVPDemo/` 只放美术表现资产（Audio / Characters / Common / Environment / Props / UI / VFX / Weapons）；`Content/PVP/` 放逻辑资产（Animation / Actors / Characters / Data / Game / Input / Maps / Types / UI），动画蓝图 / 动画接口 / 动画通知统一在 `Animation/`，枚举与结构体统一在 `Types/`。
 - **第三方原包**：`Content/InfimaGames/TacticalFPSAnimations` 不随仓库分发。工程自有资产已完成引用重定向、不再依赖该包，克隆后无需导入原包即可打开工程并运行自有地图。
 - **构建**：右键 `PVPDemo.uproject` → Generate Visual Studio project files → 编译 `PVPDemoEditor`。
@@ -22,10 +22,11 @@
 | `Docs/Content-Structure.md` | 资产 | 美术根与逻辑根的模块划分、命名前缀与后缀、各模块资产表与数量、第三方迁移与自包含约束 | 新增 / 移动 / 重命名资产，核对命名与数量 |
 | `Docs/AI-Workflow.md` | 流程 | 读取顺序、文档同步判定与清单、输出要求、冲突处理、上下文维护 | 每次任务开始与收尾 |
 | `Docs/<模块>/` | 模块 | 每个功能模块的固定三件套：`README.md`（导航 + 已实现能力速查）、`<模块>-Dev.md`（开发流程与踩坑）、`<模块>-Integration.md`（依赖与接口契约）；可含 `<模块>-<主题>.md` 附加文档 | 新增 / 修改 / 排查某个功能模块：先读其中的 `README.md`，再按导航按需读取 |
+| `Docs/Equipment/` | 装备 | 武器 Actor / 装备组件、自动拾取与附着、成对 Montage、武器资产生成 SOP 与接口契约（固定三件套） | 修改武器 / 拾取 / 装备组件，排查挂点或 Montage 问题 |
 | `README.md` | 上手 | 打开方式、编译目标、第三方包说明、版本控制 | 环境配置、构建、克隆相关问题 |
 | `Content/PVP/` | 逻辑资产 | 蓝图、动画蓝图、动画通知、蓝图接口、枚举 / 结构体、输入映射、数据表、关卡（Animation / Actors / Characters / Data / Game / Input / Maps / Types / UI） | 新增 / 修改蓝图、动画蓝图、输入映射或地图，核对逻辑资产落点与归位规则（`pvp_logic_layout.py`） |
-| `Content/Python/` | 工具 | `migrate_pvp_assets.py` 资产迁移、`dump_tfa_character.py` 角色 Dump、`compare_tfa_character.py` 对照校验、`setup_pvp_game_framework.py` 游戏框架落地（路由复用 `pvp_logic_layout.py`）、`setup_pvp_input.py` 输入资产校验（含 Look Y 极性）与输入配置生成、`setup_pvp_anim_blueprint.py` 生成 / 重建 `ABP_PVP_FP_Locomotion`（编译 + 状态机读回）、`verify_pvp_game_framework.py` 零依赖与地图校验、`verify_doc_index.py` 文档索引一致性校验（三件套 / 引用可达 / 源码状态）、`pvp_logic_layout.py` 逻辑资产布局单一事实来源、`reorg_pvp_logic_assets.py` 逻辑资产归位执行器（默认 dry-run，`PVP_REORG_APPLY=1` 执行）、`verify_pvp_asset_layout.py` 离线布局校验 | 批量资产迁移、逻辑资产归位与布局校验、角色 / 相机一致性校验、重建游戏框架资产、生成并校验输入配置、结构性改动后自检文档索引 |
-| `Saved/MigrationReports/`、`Saved/PVPCharacterDump/`、`Saved/PVPGameFrameworkReport/`、`Saved/PVPInputReport/`、`Saved/PVPAssetReorgReport/`、`Saved/PVPAnimBlueprintReport/`、`Saved/AssetBackup/`、`Saved/DocIndexReport/` | 产物 | 迁移清单与报告、角色对照报告、游戏框架落地与校验报告、输入资产校验与配置生成报告、逻辑资产归位与布局校验报告、动画蓝图生成 / 编译 / 状态机读回报告、删除前资产文件备份、文档索引校验报告 | 核对迁移结果、角色对齐情况、框架落地情况与输入配置结果、资产归位结果与回滚、动画蓝图生成结果、文档索引自检结果 |
+| `Content/Python/` | 工具 | `migrate_pvp_assets.py` 资产迁移、`dump_tfa_character.py` 角色 Dump、`compare_tfa_character.py` 对照校验、`setup_pvp_game_framework.py` 游戏框架落地（路由复用 `pvp_logic_layout.py`）、`setup_pvp_input.py` 输入资产校验（含 Look Y 极性）与输入配置生成、`setup_pvp_anim_blueprint.py` 生成 / 重建 `ABP_PVP_FP_Locomotion`（编译 + 状态机读回）、`setup_pvp_weapon.py` 生成武器 BP / 武器 ABP、给角色 ABP 原地加 `DefaultSlot` 并放置关卡武器拾取物、`verify_pvp_game_framework.py` 零依赖与地图校验、`verify_doc_index.py` 文档索引一致性校验（三件套 / 引用可达 / 源码状态）、`pvp_logic_layout.py` 逻辑资产布局单一事实来源、`reorg_pvp_logic_assets.py` 逻辑资产归位执行器（默认 dry-run，`PVP_REORG_APPLY=1` 执行）、`verify_pvp_asset_layout.py` 离线布局校验 | 批量资产迁移、逻辑资产归位与布局校验、角色 / 相机一致性校验、重建游戏框架资产、生成并校验输入配置、结构性改动后自检文档索引 |
+| `Saved/MigrationReports/`、`Saved/PVPCharacterDump/`、`Saved/PVPGameFrameworkReport/`、`Saved/PVPInputReport/`、`Saved/PVPAssetReorgReport/`、`Saved/PVPAnimBlueprintReport/`、`Saved/PVPWeaponReport/`、`Saved/AssetBackup/`、`Saved/DocIndexReport/` | 产物 | 迁移清单与报告、角色对照报告、游戏框架落地与校验报告、输入资产校验与配置生成报告、逻辑资产归位与布局校验报告、动画蓝图生成 / 编译 / 状态机读回报告、武器 BP / 武器 ABP / 角色 Slot / 关卡拾取物生成与读回报告、删除前资产文件备份、文档索引校验报告 | 核对迁移结果、角色对齐情况、框架落地情况与输入配置结果、资产归位结果与回滚、动画蓝图生成结果、武器资产生成结果、文档索引自检结果 |
 
 表中未覆盖的维度，先在 `Docs/` 与 `README.md` 中检索，不要凭经验猜测。
 
@@ -39,9 +40,10 @@
 | Character | `Docs/Character/` | `README.md` | `Character-Dev.md`、`Character-Integration.md` | 已实现 1P 角色本体（胶囊 / Mesh 对齐参考蓝图、`CameraFP` 挂 `head` 骨骼）、走跑速度切换与原生输入回调；导航内含组件默认值与移动状态权威表；相机模式栈仍预留 |
 | Game | `Docs/Game/` | `README.md` | `Game-Dev.md`、`Game-Integration.md` | 已实现会话与玩家入口（默认 Pawn / 控制器、GameOnly 输入模式、默认 IMC 注入、`GetPVPCharacter`）；导航内含入口装配与启动时序权威表；GameState / PlayerState / 对局流程未实现 |
 | GAS | `Docs/GAS/` | `README.md` | `GAS-Dev.md`、`GAS-Integration.md` | 仅落地原生 `InputTag.Move/Look/Jump/Run`；导航内含 Tag 命名与语义权威表；ASC / AttributeSet / GameplayAbility / AbilitySystemGlobals / 双网格 Montage Task / Cue 均未实现 |
-| Animation | `Docs/Animation/` | `README.md` | `Animation-Dev.md`、`Animation-Integration.md` | 已实现 `UPVPAnimInstanceBase`（游戏线程采样 + 动画线程计算）与 `ABP_PVP_FP_Locomotion`（`Ground` / `JumpStart` / `Falling` / `Land` 四状态，Ground 内 BlendSpace + Run 混合，6 条过渡）；导航内含变量与状态机权威表；新 ABP 已在 `BP_PVPBaseCharacter` 上接线（C++ 默认 ABP 未改），视觉复核待做；Look / 蹲伏 / 瞄准 / 武器 / 程序化动画均未提供 |
+| Animation | `Docs/Animation/` | `README.md` | `Animation-Dev.md`、`Animation-Integration.md` | 已实现 `UPVPAnimInstanceBase`（游戏线程采样 + 动画线程计算）与 `ABP_PVP_FP_Locomotion`（`Ground` / `JumpStart` / `Falling` / `Land` 四状态，Ground 内 BlendSpace + Run 混合，6 条过渡）；导航内含变量与状态机权威表；新 ABP 已在 `BP_PVPBaseCharacter` 上接线（C++ 默认 ABP 未改），视觉复核待做；`ABP_PVP_FP_Locomotion` 已原地增加 `DefaultSlot`，另有武器 ABP `ABP_PVP_FP_Weapon_AR`（参考姿势 + Slot）；Look / 蹲伏 / 瞄准 / 程序化动画均未提供 |
+| Equipment | `Docs/Equipment/` | `README.md` | `Equipment-Dev.md`、`Equipment-Integration.md` | 已实现 `APVPWeaponActor` / `UPVPEquipmentComponent`、靠近自动拾取、附着到 `ik_hand_gun`、角色 / 武器成对 Equip / Fire / Reload Montage；`BP_PVP_Weapon_AR`、`ABP_PVP_FP_Weapon_AR` 与地图拾取物由 `setup_pvp_weapon.py` 生成；3P、网络复制、开火 / 弹药玩法未实现 |
 
-- 新建功能模块（源码分层或逻辑资产模块由空变实）时必须同步创建该文件夹并补齐三件套；预留模块（`Camera/`、`Camera/Modes/`、`Equipment/`）进入实现前不建空目录。
+- 新建功能模块（源码分层或逻辑资产模块由空变实）时必须同步创建该文件夹并补齐三件套；预留模块（`Camera/`、`Camera/Modes/`）进入实现前不建空目录。
 - 三件套命名固定；附加文档必须以 `<模块>-` 开头，并在该模块 `README.md` 的文档清单中登记，禁止孤儿文档。
 - 制度正文（触发条件、固定章节、踩坑四要素、读取协议、模板）见 `Docs/AI-Workflow.md` 第 6 节。
 
@@ -61,7 +63,7 @@
 
 1. **命名**：类与文件统一 `PVP` 前缀（如 `APVPBaseCharacter`），导出宏 `PVPDEMO_API`；遵守 UE 的 `U` / `A` / `F` / `E` / `I` 类型前缀。
 2. **位置**：源码分层只能落在已登记层 `Character/` `Game/` `Camera/` `Animation/` `Equipment/` `Input/` `GAS/`，不新建未登记的分层目录。编辑器专用代码走独立模块 `Source/PVPDemoEditor/`（模块目录，不是新分层），不得把编辑器依赖引入运行时模块。
-3. **数据流**：`Input → Character/GAS → Animation/Camera` 单向流动；表现层只读逻辑状态，不得反向修改。`Game/` 依赖 `Character/` 单向，`Character/` 不感知 `Game/`。
+3. **数据流**：`Input → Character/GAS → Animation/Camera` 单向流动；表现层只读逻辑状态，不得反向修改。`Game/` 依赖 `Character/` 单向，`Character/` 不感知 `Game/`；`Character/` 依赖 `Equipment/` 单向，`Equipment/` 只使用 `ACharacter` 与武器 Actor，不包含 `Character/` 具体类，也不依赖 `Game/` / `GAS/`。
 4. **阶段约束**：`Camera/Modes/` 仅为预留目录，未到阶段不得提前实现相机模式栈；`CameraFP` 当前内置于 `Character/PVPBaseCharacter`。
 5. **资产位置与命名**：美术表现资产只放 `Content/PVPDemo/<模块>/`；逻辑资产（蓝图、动画蓝图、动画通知、蓝图接口、枚举 / 结构体、数据资产、地图）只放 `Content/PVP/<模块>/`，其中动画类进 `Animation/`、类型定义进 `Types/`（路由见 `Content/Python/pvp_logic_layout.py`）。命名遵循 `Docs/Content-Structure.md` 第 2 节前缀 / 后缀。
 6. **资产生成方式**：`.uasset` / `.umap` 不可手写或伪造，只能通过 UE 编辑器或 `Content/Python/` 下的脚本产出；新增脚本需登记到文档与本文件地图。

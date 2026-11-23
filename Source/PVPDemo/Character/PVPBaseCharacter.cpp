@@ -2,6 +2,7 @@
 
 #include "PVPDemo/Character/PVPBaseCharacter.h"
 
+#include "PVPDemo/Equipment/PVPEquipmentComponent.h"
 #include "PVPDemo/GAS/PVPGameplayTags.h"
 #include "PVPDemo/Input/PVPInputComponent.h"
 #include "PVPDemo/Input/PVPInputConfig.h"
@@ -96,6 +97,11 @@ APVPBaseCharacter::APVPBaseCharacter()
 	// The reference toggles camera components on perspective changes; this class is first person
 	// only, so the first person camera is active from the start.
 	CameraFP->bAutoActivate = true;
+
+	// Weapons are picked up by overlapping actors that resolve this component on the pawn. The
+	// component is intentionally independent from Character/ (it only knows ACharacter), keeping
+	// the dependency one way: Character -> Equipment.
+	EquipmentComponent = CreateDefaultSubobject<UPVPEquipmentComponent>(TEXT("EquipmentComponent"));
 }
 
 void APVPBaseCharacter::BeginPlay()

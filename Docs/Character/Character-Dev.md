@@ -33,6 +33,7 @@
 - 视角：`CameraFP` 挂在 `CharacterMesh0` 的 `head` 骨骼上，`bUsePawnControlRotation=true`，旋转来自 Controller 的 Yaw / Pitch，位置随第一人称动画。
 - 移动：`bUseControllerRotationYaw=true`；`MaxWalkSpeed` 在构造与 `BeginPlay` 各写一次，按住 `InputTag.Run` 在 `WalkSpeed`(300) / `RunSpeed`(600) 之间切换。
 - 输入：通过 `OverrideInputComponentClass` 使用 `UPVPInputComponent`，在 `SetupPlayerInputComponent` 中按 Tag 绑定 4 个动作 / 6 条事件；绑定关系见 `Docs/Input/README.md` 第 3 节。
+- 装备：构造期创建 `UPVPEquipmentComponent`（当前武器 / 一次一把）；武器拾取、附着与成对 Montage 由 `Equipment/` 负责，角色不实现武器逻辑。
 - 组件默认值：以参考蓝图导出值（`Saved/PVPCharacterDump/tfa_base_character.json`）为准，见导航第 3.1 节。
 
 ### 2.2 源码结构
@@ -41,7 +42,7 @@
 | --- | --- |
 | `PVPBaseCharacter.h` | 公开组件与属性（`CameraFP`、`InputConfig`、`WalkSpeed`、`RunSpeed`、`bIsRunning`）、输入回调声明、`TODO(3P)` 规划注释 |
 | `PVPBaseCharacter.cpp` — `PVPBaseCharacterDefaults` | 胶囊 / Mesh / 相机挂点 / FOV / 第一人称 Mesh 与 AnimBP 路径的集中常量 |
-| `PVPBaseCharacter.cpp` — 构造函数 | 胶囊、旋转跟随、眼高、输入组件类型、初始速度、Mesh 与 AnimBP 查找、`CameraFP` 创建与挂接 |
+| `PVPBaseCharacter.cpp` — 构造函数 | 胶囊、旋转跟随、眼高、输入组件类型、初始速度、Mesh 与 AnimBP 查找、`CameraFP` 创建与挂接、`EquipmentComponent` 创建 |
 | `PVPBaseCharacter.cpp` — `BeginPlay` | 重置跑步状态，并按蓝图覆盖后的 `WalkSpeed` 重写 `MaxWalkSpeed` |
 | `PVPBaseCharacter.cpp` — `SetupPlayerInputComponent` | Cast 校验输入组件 → 校验 `InputConfig` → 绑定 6 条事件 → 打印 `bound N/6` |
 | `PVPBaseCharacter.cpp` — `Input_Move` / `Input_Look` / `Input_Jump*` / `Input_Run*` / `SetRunning` | 移动基向量、视角写 Controller、起跳、速度切换与 Verbose 日志 |
@@ -71,6 +72,7 @@
 7. **速度切换无逐帧开销**。`SetRunning` 状态相同直接返回，只有 Started / Completed 时写一次 `MaxWalkSpeed`，不需要 Tick。
 8. **相机暂留本模块**。`Camera/` 模式栈处于预留阶段，提前拆分会引入无人消费的抽象；等模式栈落地时再把 `CameraFP` 迁出，迁移边界见 `Character-Integration.md` 第 6 节。
 9. **失败降级不崩溃**。`InputConfig` 缺失、输入组件类型不符只告警并跳过绑定；`FObjectFinder` 失败只是网格 / 动画为空，角色仍可生成，便于空内容工程启动。
+10. **装备组件由角色持有，但武器逻辑不写在角色里**。`Character → Equipment` 单向；`UPVPEquipmentComponent` 只依赖 `ACharacter` 与 `APVPWeaponActor`，避免 `Equipment/` 反向包含 `Character/` 具体类。
 
 ---
 
@@ -87,6 +89,7 @@
    - `Docs/Character/Character-Integration.md` 第 2 / 4 / 7 节（若涉及接口、依赖或资产契约）；
    - `Docs/Input/README.md` 第 3 节（若动作 / 回调 / 绑定数量变化）；
    - `Docs/Source-Structure.md` 2.1 节（若文件或实现状态变化）。
+8. **新增组件**：在构造函数创建后同步本文第 2 节、导航第 3.1 / 4 节与 `Character-Integration.md` 第 2 / 4 节；若组件属于其他模块（如 `EquipmentComponent`），逻辑与文档落在该模块，角色只保留创建与只读属性。
 
 ---
 

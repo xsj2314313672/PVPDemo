@@ -2,7 +2,7 @@
 
 Checks:
   1. every expected asset file exists under Content/PVP/<folder>, legacy paths are gone;
-  2. per-folder asset counts (and the 77-asset total) match the layout definition;
+  2. per-folder asset counts (and the 80-asset total) match the layout definition;
   3. no /Game/PVP/Actors/<Animation|Type|UI asset> legacy path string survives inside
      Content/PVP or Content/PVPDemo packages;
   4. key references (character blueprints -> ABP, mannequin -> post process ABP) point at the

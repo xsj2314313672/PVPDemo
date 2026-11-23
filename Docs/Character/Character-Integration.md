@@ -16,6 +16,7 @@
 **职责**：
 
 - 定义玩家角色本体：组件装配、1P 相机 `CameraFP`、移动状态（走 / 跑）与原生输入回调实现。
+- 构造期创建 `UPVPEquipmentComponent`，作为武器拾取入口；武器逻辑本身属于 `Equipment/`。
 - 向 `Animation/`、`Camera/`、`Game/` 暴露只读状态与访问器。
 
 **非职责**：
@@ -40,7 +41,7 @@
 | `InputCore` | 输入相关基础类型（随 Enhanced Input 一并使用） |
 | `GameplayTags` | 已声明；角色经 `GAS/PVPGameplayTags` 使用原生 Tag（`FNativeGameplayTag` 类型由该模块提供） |
 
-- 模块内部依赖：`Character/` 只依赖 `Input/`（`UPVPInputComponent`、`UPVPInputConfig`）与 `GAS/PVPGameplayTags`。
+- 模块内部依赖：`Character/` 依赖 `Input/`（`UPVPInputComponent`、`UPVPInputConfig`）、`GAS/PVPGameplayTags` 与 `Equipment/`（`UPVPEquipmentComponent`）。`Character → Equipment` 为单向；`Equipment/` 只使用 `ACharacter` 与 `APVPWeaponActor`，不包含本模块具体类。
 - 本模块当前没有新增第三方依赖。
 
 ### 2.2 配置依赖
@@ -78,6 +79,7 @@ APVPBaseCharacter
         ├── CharacterMovement：MaxWalkSpeed 走 / 跑
         ├── Controller：ControlRotation（Yaw / Pitch，Yaw 同时驱动 Actor 朝向）
         ├── CameraFP：bUsePawnControlRotation 消费 ControlRotation，位置挂 head 骨骼
+        ├── EquipmentComponent：当前武器（拾取入口，武器逻辑在 Equipment/）
         └── Animation：只读 bIsRunning / ControlRotation（不反向写）
 ```
 
@@ -106,6 +108,7 @@ L_PVP_Showcase（WorldSettings.GameMode → BP_PVPGameMode）
 | 接口 | 位置 | 类型 | 用途 |
 | --- | --- | --- | --- |
 | `CameraFP` | `Character/PVPBaseCharacter.h` | `TObjectPtr<UCameraComponent>`，`VisibleAnywhere` / `BlueprintReadOnly` | 第一人称相机；蓝图可改 FOV 等视图参数，**不得重挂或重建** |
+| `EquipmentComponent` | 同上 | `TObjectPtr<UPVPEquipmentComponent>`，`VisibleAnywhere` / `BlueprintReadOnly` | 当前武器与拾取入口；武器逻辑在 `Equipment/`，角色只持有组件 |
 | `InputConfig` | 同上 | `TObjectPtr<UPVPInputConfig>`，`EditDefaultsOnly` / `BlueprintReadOnly` | Tag → IA 配置，`SetupPlayerInputComponent` 消费 |
 | `WalkSpeed` | 同上 | `float`，默认 `300`，`EditDefaultsOnly`，`ClampMin=0` | 未按住跑时的 `MaxWalkSpeed` |
 | `RunSpeed` | 同上 | `float`，默认 `600`，`EditDefaultsOnly`，`ClampMin=0` | 按住跑时的 `MaxWalkSpeed` |
@@ -175,7 +178,7 @@ APVPPlayerController.BeginPlay（IMC 注入）
 
 ## 6. 禁止的依赖方向
 
-- `Character/` 不得包含 `Game/`、`Animation/`、`Camera/`、`Equipment/` 的头文件；需要外部读取时由对方 include 本模块头文件。
+- `Character/` 不得包含 `Game/`、`Animation/`、`Camera/` 的头文件；只允许单向包含 `Equipment/PVPEquipmentComponent.h`，不得包含 `Equipment/PVPWeaponActor.h`；`Equipment/` 不得包含 `Character/` 具体类（只用 `ACharacter`）。
 - `Character/` 不得注入 IMC、不得设置输入模式、不得直接引用 `IA_PVP_*` / `IMC_PVP_Default` 资产。
 - `Character/` 不得在运行时拼 GameplayTag 字符串；Tag 统一来自 `GAS/PVPGameplayTags.h`。
 - `Animation/`、`Camera/` 不得写 `ControlRotation`、`bIsRunning`、`MaxWalkSpeed` 或调用 `SetRunning`。
@@ -192,6 +195,7 @@ APVPPlayerController.BeginPlay（IMC 注入）
 | 新增 / 修改输入回调或绑定数量 | `SetupPlayerInputComponent` 的 `ExpectedBindings`、`Docs/Input/README.md` 第 3 节、`Docs/Input/Input-Integration.md` 第 4 / 5 节、`setup_pvp_input.py` |
 | `InputConfig` 类型或槽位契约变化 | `Source/PVPDemo/Input/PVPInputConfig.h/.cpp`、`setup_pvp_input.py`、`Docs/Input/Input-Integration.md` 第 4.2 节 |
 | 新增组件（3P / 透视 / 程序化） | 本文第 3 / 4 节、`README.md` 第 3.1 / 5 节、`Docs/Source-Structure.md` 2.1 节 |
+| 新增 / 移除 `EquipmentComponent` 或装备接口变化 | 本文第 2 / 4 / 6 / 7 节、`Character-Dev.md` 第 2 / 3 节、`Docs/Equipment/` 三件套 |
 | 输入组件类型或 `OverrideInputComponentClass` | 本文第 2.2 节、`Character-Dev.md` 踩坑 1、`Docs/Input/Input-Integration.md` 第 2.2 节 |
 | 构造期第三方引用改为自有副本 | 本文第 2.3 节、`Character-Dev.md` 踩坑 5、`Docs/Source-Structure.md` 2.1 节 |
 | `BP_PVPBaseCharacter` 的 Mesh AnimClass 覆盖变化 | 本文第 4.2 / 5.3 节、`Character-Dev.md` 第 2.3 / 6.3 节、`Docs/Animation/` 三件套；C++ 构造期默认不变 |
@@ -206,6 +210,7 @@ APVPPlayerController.BeginPlay（IMC 注入）
 
 - 源码
   - `Source/PVPDemo/Character/PVPBaseCharacter.h/.cpp`
+  - `Source/PVPDemo/Equipment/PVPEquipmentComponent.h/.cpp`（单向依赖方）
   - `Source/PVPDemo/Input/PVPInputComponent.h/.cpp`（依赖方）
   - `Source/PVPDemo/Input/PVPInputConfig.h/.cpp`（依赖方）
   - `Source/PVPDemo/GAS/PVPGameplayTags.h/.cpp`（Tag 来源）

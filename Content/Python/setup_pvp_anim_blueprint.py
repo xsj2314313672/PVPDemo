@@ -217,11 +217,14 @@ def verify_asset(blueprint):
     check('graph.states', actual_states == expected_states,
           'actual=%s expected=%s' % (sorted(actual_states), sorted(expected_states)))
     check('graph.transitions', len(transitions) == 6, '%d (expected 6)' % len(transitions))
+    check('graph.montage_slot', report.get('montage_slot') == 'DefaultSlot',
+          report.get('montage_slot') or 'None')
     check('graph.compiled_report', bool(report.get('compiled')),
           'compile_errors=%s' % report.get('compile_errors'))
 
     wiring = report.get('wiring') or {}
-    for key in ('root_pose', 'state_machine_pose', 'entry_to_ground',
+    for key in ('root_pose', 'state_machine_pose', 'montage_slot_source', 'montage_slot_pose',
+                'entry_to_ground',
                 'ground_blendspace_x', 'ground_blendspace_y', 'ground_run_blend',
                 'ground_pose', 'jump_start_pose', 'falling_pose', 'land_pose',
                 'land_auto_rule'):

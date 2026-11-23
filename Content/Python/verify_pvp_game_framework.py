@@ -24,6 +24,7 @@ CHARACTER_BP = '/Game/PVP/Characters/BP_PVPBaseCharacter'
 LEGACY_CHARACTER_BP = '/Game/PVPDemo/Characters/BP_PVPBaseCharacter'
 GAMEMODE_BP = '/Game/PVP/Game/BP_PVPGameMode'
 PLAYERCONTROLLER_BP = '/Game/PVP/Game/BP_PVPPlayerController'
+WEAPON_PICKUP_LABEL = 'PVP_WeaponPickup_AR'
 
 REPORT_DIR = os.path.join(SAVED_DIR, 'PVPGameFrameworkReport')
 HASH_FILE = os.path.join(REPORT_DIR, 'source_hashes.json')
@@ -133,8 +134,14 @@ def main():
         recorded = baseline.get('map', {}).get('sha256')
         check('map.source_matches_baseline', recorded == source_hash_after, '%s vs %s' % (recorded, source_hash_after))
 
-    check('map.actor_count_conserved', len(target_actors) == len(source_actors),
-          'target=%d source=%d' % (len(target_actors), len(source_actors)))
+    # The weapon pickup is the only intentional addition on top of the migrated source map.
+    weapon_pickups = [a for a in target_actors if a.get_actor_label() == WEAPON_PICKUP_LABEL]
+    expected_actor_count = len(source_actors) + len(weapon_pickups)
+    check('map.actor_count_conserved', len(target_actors) == expected_actor_count,
+          'target=%d source=%d weapon_pickups=%d' % (
+              len(target_actors), len(source_actors), len(weapon_pickups)))
+    check('map.weapon_pickup_count', len(weapon_pickups) == 1,
+          'count=%d' % len(weapon_pickups))
 
     player_starts = [a for a in target_actors if isinstance(a, unreal.PlayerStart)]
     check('map.player_start', len(player_starts) >= 1, 'count=%d' % len(player_starts))

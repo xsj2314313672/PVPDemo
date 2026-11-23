@@ -15,7 +15,7 @@
 
 **职责**：玩家角色的本体积木与第一人称视图载体。
 
-- 角色实体的组件装配：胶囊、`CharacterMesh0` 相对变换、`CameraFP`、动画蓝图。
+- 角色实体的组件装配：胶囊、`CharacterMesh0` 相对变换、`CameraFP`、动画蓝图、`EquipmentComponent`（装备层入口）。
 - 移动状态：走 / 跑速度切换（`WalkSpeed` / `RunSpeed` / `bIsRunning`）与 `MaxWalkSpeed` 应用时机。
 - 原生输入的处理函数实现：Move / Look / Jump / Run（绑定关系与键位的权威表在 `Docs/Input/README.md` 第 3 节）。
 - 为表现层提供只读状态：`bIsRunning`、`ControlRotation`、`CameraFP`。
@@ -70,6 +70,7 @@
 | `CameraFP` 参数 | `FieldOfView=100`、`bUsePawnControlRotation=true`、`PostProcessBlendWeight=1.0`、`bAutoActivate=true` | 旋转来自 `ControlRotation`，动画不参与视角旋转 |
 | Mesh / AnimBP | 构造期 `FObjectFinder`：`SKM_PVP_FP_Manny_Simple`、`ABP_PVP_FP_BaseCharacter`；`BP_PVPBaseCharacter` 的 Mesh AnimClass 已覆盖为 `ABP_PVP_FP_Locomotion` | 工程自有路径：`/Game/PVPDemo/Characters/Mannequins/Meshes/`、`/Game/PVP/Animation/AnimBP/`；C++ 默认未改，实际生效以蓝图 CDO 覆盖为准 |
 | 输入组件类型 | `OverrideInputComponentClass = UPVPInputComponent` | 通过 `APawn` 钩子指定，未改 `DefaultInput.ini` |
+| `EquipmentComponent` | `UPVPEquipmentComponent`，`VisibleAnywhere` / `BlueprintReadOnly` | 构造期 `CreateDefaultSubobject`；维护当前武器，拾取由 `Equipment/` 的武器 Overlap 调用；不实现武器逻辑 |
 
 ### 3.2 移动与跑步状态
 
@@ -100,7 +101,7 @@
 
 | 阶段 | 执行者 | 行为 |
 | --- | --- | --- |
-| 构造函数 | `APVPBaseCharacter` | 设置胶囊 / Mesh 相对变换 / 眼高 / 旋转跟随；`OverrideInputComponentClass = UPVPInputComponent`；初始 `MaxWalkSpeed = WalkSpeed`、`bIsRunning = false`；`FObjectFinder` 装配 Mesh 与 AnimBP；创建 `CameraFP` 并挂 `head` 骨骼 |
+| 构造函数 | `APVPBaseCharacter` | 设置胶囊 / Mesh 相对变换 / 眼高 / 旋转跟随；`OverrideInputComponentClass = UPVPInputComponent`；初始 `MaxWalkSpeed = WalkSpeed`、`bIsRunning = false`；`FObjectFinder` 装配 Mesh 与 AnimBP；创建 `CameraFP` 并挂 `head` 骨骼；创建 `EquipmentComponent` |
 | 蓝图 CDO（手动完成） | `BP_PVPBaseCharacter` | Mesh AnimClass 覆盖为 `ABP_PVP_FP_Locomotion`；`APVPBaseCharacter` 构造期默认 `ABP_PVP_FP_BaseCharacter` 保持不变 |
 | `BeginPlay` | `APVPBaseCharacter` | 重置 `bIsRunning = false`，按**蓝图覆盖后**的 `WalkSpeed` 重写 `MaxWalkSpeed` |
 | Possess 后 | `APVPBaseCharacter::SetupPlayerInputComponent` | 校验输入组件类型与 `InputConfig`，按 Tag 绑定 6 条事件并打印绑定计数 |
@@ -119,6 +120,7 @@ LogPVPBaseCharacter: <pawn>: running=true max_walk_speed=600.0
 
 ## 5. 未实现能力与扩展方向
 
+- **武器装备**：由 `Equipment/` 实现（`APVPWeaponActor` + `UPVPEquipmentComponent`）；本模块只负责构造期创建组件与提供角色 Mesh，武器拾取 / 附着 / 成对 Montage 见 `Docs/Equipment/`。
 - **3P 与透视切换**：参考蓝图中的 `CameraPivotPoint → SpringArm → CameraTP`、`PP_Bodycam`、`SpotLight` 与 `IA_TFA_ToggleCameraPerspective` / `IA_TFA_ToggleCameraAnimation` 均未实现（头文件内 `TODO(3P)`）。
 - **双网格**：当前只有 1P 单网格；1P 手臂 + 3P 全身的可见性管理、`BecomeViewTarget` 回调未接入（规划中的 `PVPPerspectiveComponent`）。
 - **相机模式栈**：`Camera/` 与 `Camera/Modes/` 为预留目录，`CameraFP` 暂置于本模块，待相机系统进入实现阶段再迁出。
@@ -148,6 +150,7 @@ LogPVPBaseCharacter: <pawn>: running=true max_walk_speed=600.0
 | 变更 | 必须同步 |
 | --- | --- |
 | 组件装配、默认值、相机参数变化（胶囊 / Mesh / 眼高 / FOV / 挂点） | 本文第 3.1 节 + `Character-Dev.md` 第 4 节 SOP + `compare_tfa_character.py` 的校验项 |
+| 新增 / 移除组件（如 `EquipmentComponent`） | 本文第 3.1 / 4 节 + `Character-Dev.md` 第 2 节 + `Character-Integration.md` 第 2 / 4 节 |
 | 走 / 跑速度、`bIsRunning` 语义变化 | 本文第 3.2 节 + `Character-Integration.md` 第 4 / 7 节（Animation / Camera 只读方受影响） |
 | 新增 / 删除 / 重绑动作或回调函数 | `Docs/Input/README.md` 第 3 节（权威表）+ 本文第 3.3 节链接与行为列 + `Docs/Input/Input-Dev.md` 第 4 节 |
 | `BP_PVPBaseCharacter` 的 Mesh AnimClass 覆盖变化 | 本文第 3.1 / 4 节 + `Character-Dev.md` 第 2.3 / 6.3 节 + `Character-Integration.md` 第 4.2 / 5.3 节 + `Docs/Animation/README.md` 第 3.1 节 |

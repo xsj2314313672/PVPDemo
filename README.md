@@ -1,6 +1,6 @@
 # PVPDemo
 
-基于 Unreal Engine 5 的第一人称 PVP 射击玩法 Demo。当前已落地基础第一人称角色与相机（`Character/PVPBaseCharacter`）、会话与玩家入口层（`Game/PVPGameMode`、`Game/PVPPlayerController`）、动画实例基类（`Animation/PVPAnimInstanceBase`）与四状态 locomotion 动画蓝图（`ABP_PVP_FP_Locomotion`，已在 `BP_PVPBaseCharacter` 上接线，视觉复核待做）以及一张工程自有关卡 `L_PVP_Showcase`；规划中逐步接入 GAS 技能框架、移动/开镜、武器换弹与检视、动画蓝图分层与音效等模块。
+基于 Unreal Engine 5 的第一人称 PVP 射击玩法 Demo。当前已落地基础第一人称角色与相机（`Character/PVPBaseCharacter`）、会话与玩家入口层（`Game/PVPGameMode`、`Game/PVPPlayerController`）、动画实例基类（`Animation/PVPAnimInstanceBase`）与四状态 locomotion 动画蓝图（`ABP_PVP_FP_Locomotion`，已在 `BP_PVPBaseCharacter` 上接线，视觉复核待做）、武器拾取与附着（`Equipment/PVPWeaponActor`、`Equipment/PVPEquipmentComponent`，武器蓝图 `BP_PVP_Weapon_AR` + 武器动画蓝图 `ABP_PVP_FP_Weapon_AR`，成对 Equip / Fire / Reload Montage 示例）以及一张工程自有关卡 `L_PVP_Showcase`；规划中逐步接入 GAS 技能框架、移动 / 开镜、武器换弹与检视玩法、动画蓝图分层与音效等模块。
 
 ## 目录结构
 
@@ -43,7 +43,7 @@ PVPDemo/
 - 改某个功能模块 → 先读 `Docs/<模块>/README.md`（导航），再按其中路由读 `<模块>-Dev.md` / `<模块>-Integration.md`
 - 环境 / 构建 → 本文件
 
-每个进入实现阶段的功能模块在 `Docs/` 下有同名文件夹，固定三件套：`README.md`（导航 + 已实现能力速查）、`<模块>-Dev.md`（开发流程与踩坑）、`<模块>-Integration.md`（依赖与接口契约）；附加文档须在该模块 `README.md` 登记。当前已建 `Docs/Input/`、`Docs/Character/`、`Docs/Game/`、`Docs/GAS/` 与 `Docs/Animation/`。制度正文（触发条件、固定章节、踩坑四要素、读取协议）见 `Docs/AI-Workflow.md` 第 6 节。
+每个进入实现阶段的功能模块在 `Docs/` 下有同名文件夹，固定三件套：`README.md`（导航 + 已实现能力速查）、`<模块>-Dev.md`（开发流程与踩坑）、`<模块>-Integration.md`（依赖与接口契约）；附加文档须在该模块 `README.md` 登记。当前已建 `Docs/Input/`、`Docs/Character/`、`Docs/Game/`、`Docs/GAS/`、`Docs/Animation/` 与 `Docs/Equipment/`。制度正文（触发条件、固定章节、踩坑四要素、读取协议）见 `Docs/AI-Workflow.md` 第 6 节。
 
 为防止新会话漏读，`.codebuddy/rules/doc-first/RULE.mdc` 以 **Always**（`alwaysApply: true`）常驻，仅承担入口导航——先读 `AGENTS.md`，再按维度拉取对应文档，**不写规范正文**，规范仍以本仓库文档为唯一来源。规则只在会话开始时加载，修改后需新建对话才生效。流程细节（读取顺序、文档同步判定与清单、输出要求）见 `Docs/AI-Workflow.md`；新增或改名文档时需同步更新 `AGENTS.md` 的文档地图，增删规则时同步本段与 `Docs/AI-Workflow.md`。
 

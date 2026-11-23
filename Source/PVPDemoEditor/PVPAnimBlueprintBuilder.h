@@ -67,4 +67,36 @@ public:
 		UAnimSequence* JumpFallingLoop,
 		UAnimSequence* JumpEnd,
 		const FString& ReportPath);
+
+	/**
+	 * Creates a weapon AnimBlueprint with a fixed graph:
+	 *
+	 *   SequencePlayer(ReferencePose) -> Slot(MontageSlotName) -> Root
+	 *
+	 * The reference pose keeps the weapon in its authored pose when no montage is playing; the slot
+	 * plays the weapon montages baked against the same skeleton (SKEL_PVP_AR).
+	 *
+	 * The target asset must not exist yet (the Python driver deletes the previous generated asset).
+	 */
+	UFUNCTION(BlueprintCallable, Category = "PVP|Animation")
+	static UAnimBlueprint* BuildWeaponAnimBlueprint(
+		const FString& AssetPath,
+		USkeleton* Skeleton,
+		USkeletalMesh* PreviewMesh,
+		UAnimSequence* ReferencePose,
+		FName MontageSlotName,
+		const FString& ReportPath);
+
+	/**
+	 * Inserts a montage slot between the current root pose source and the root of an existing
+	 * AnimBlueprint, without deleting the asset (protects blueprint references such as
+	 * BP_PVPBaseCharacter's Mesh AnimClass override).
+	 *
+	 * Idempotent: when the slot already exists and is wired to the root, nothing is changed.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "PVP|Animation")
+	static bool EnsureMontageSlot(
+		const FString& AnimBlueprintPath,
+		FName MontageSlotName,
+		const FString& ReportPath);
 };

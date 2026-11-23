@@ -9,6 +9,7 @@
 #include "PVPBaseCharacter.generated.h"
 
 class UCameraComponent;
+class UPVPEquipmentComponent;
 class UPVPInputConfig;
 
 /**
@@ -53,6 +54,14 @@ public:
 	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PVP|Camera")
 	TObjectPtr<UCameraComponent> CameraFP;
+
+	/**
+	 * Holds the currently equipped weapon and is the entry point used by weapon pickup overlaps.
+	 * The component only depends on ACharacter and APVPWeaponActor, so Equipment/ never depends
+	 * back on this class.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PVP|Equipment")
+	TObjectPtr<UPVPEquipmentComponent> EquipmentComponent;
 
 	/**
 	 * Tag -> InputAction mapping (DA_PVP_InputConfig), assigned on BP_PVPBaseCharacter.

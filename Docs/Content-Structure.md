@@ -6,7 +6,7 @@
 
 > **命名说明**：资产统一改为 `PVP` 前缀并遵循 Unreal 官方类型前缀规范，例如 `T_TFA_Weapon → T_PVP_Weapon`。原包中的 `TFA` 前缀已被全部替换。
 
-> **当前状态**：本目录共 **567 个美术资产**，`Content/PVP/` 共 **78 个逻辑资产**。`Content/Python/setup_pvp_game_framework.py` 已对两个根执行引用重定向并复核：**不存在任何指向第三方包的活引用**，仅剩 1 条指向原包中并不存在资产的悬空软引用（`SKM_Quinn`）。因此克隆工程后无需导入第三方包即可打开工程与运行自有地图。输入侧的 `DA_PVP_InputConfig` 由 `Content/Python/setup_pvp_input.py` 生成并挂到 `BP_PVPBaseCharacter`；`Animation/AnimBP/ABP_PVP_FP_Locomotion` 由 `Content/Python/setup_pvp_anim_blueprint.py` 生成并通过编译 / 状态机读回校验。逻辑资产已由 `Content/Python/reorg_pvp_logic_assets.py` 按职责归位：动画蓝图 / 动画接口 / 动画通知集中在 `Animation/`，枚举与结构体集中在 `Types/`，`Actors/` 只保留 Actor 蓝图；路由规则由 `Content/Python/pvp_logic_layout.py` 单点维护。
+> **当前状态**：本目录共 **567 个美术资产**，`Content/PVP/` 共 **80 个逻辑资产**。`Content/Python/setup_pvp_game_framework.py` 已对两个根执行引用重定向并复核：**不存在任何指向第三方包的活引用**，仅剩 1 条指向原包中并不存在资产的悬空软引用（`SKM_Quinn`）。因此克隆工程后无需导入第三方包即可打开工程与运行自有地图。输入侧的 `DA_PVP_InputConfig` 由 `Content/Python/setup_pvp_input.py` 生成并挂到 `BP_PVPBaseCharacter`；`Animation/AnimBP/ABP_PVP_FP_Locomotion` 由 `Content/Python/setup_pvp_anim_blueprint.py` 生成并通过编译 / 状态机读回校验；武器侧的 `Animation/AnimBP/ABP_PVP_FP_Weapon_AR`、`Actors/BP_PVP_Weapon_AR` 与地图拾取物由 `Content/Python/setup_pvp_weapon.py` 生成，并给角色 ABP 原地插入 `DefaultSlot`。逻辑资产已由 `Content/Python/reorg_pvp_logic_assets.py` 按职责归位：动画蓝图 / 动画接口 / 动画通知集中在 `Animation/`，枚举与结构体集中在 `Types/`，`Actors/` 只保留 Actor 蓝图；路由规则由 `Content/Python/pvp_logic_layout.py` 单点维护。
 
 ---
 
@@ -30,13 +30,13 @@ Content/PVPDemo/                       567   自有美术资产根
     ├── Common/         2   通用武器配件
     └── AssaultRifle/ 368   突击步枪全套资产
 
-Content/PVP/                          78   自有逻辑资产根
-├── Animation/         15   动画逻辑：动画蓝图、动画接口、动画通知
-│   ├── AnimBP/         4   ABP_PVP_FP_BaseCharacter、ABP_PVP_FP_Locomotion、ABP_PVP_TP_BaseCharacter、ABP_PVP_Manny_PostProcess
+Content/PVP/                          80   自有逻辑资产根
+├── Animation/         16   动画逻辑：动画蓝图、动画接口、动画通知
+│   ├── AnimBP/         5   ABP_PVP_FP_BaseCharacter、ABP_PVP_FP_Locomotion、ABP_PVP_FP_Weapon_AR、ABP_PVP_TP_BaseCharacter、ABP_PVP_Manny_PostProcess
 │   │   └── Environment/1   ABP_PVP_ConstructionLamp_Large 环境灯具动画蓝图
 │   ├── Interfaces/     1   BPI_PVP_AnimationState 动画状态蓝图接口
 │   └── Notifies/       9   5 个 AN_PVP_* 与 4 个 ANS_PVP_* 通用动画通知蓝图
-├── Actors/            19   从第三方复制的 Actor 蓝图（墙体/灯具/信息板/配置/武器/弹匣/物理体/注射器）
+├── Actors/            20   从第三方复制的 Actor 蓝图（墙体/灯具/信息板/配置/武器/弹匣/物理体/注射器）与 BP_PVP_Weapon_AR
 ├── Characters/         2   BP_PVPBaseCharacter、BP_PVP_BaseCharacter
 ├── Data/               1   DT_PVP_TextStyle 文本样式数据表
 ├── Game/               2   BP_PVPGameMode、BP_PVPPlayerController
@@ -224,11 +224,11 @@ Content/PVP/                          78   自有逻辑资产根
 
 | 子文件夹 | 数量 | 资产含义与作用 |
 | --- | --- | --- |
-| `Animation/` | 15 | 动画逻辑唯一落点，按资产类型再分子目录：`AnimBP/`（4 个角色动画蓝图，含本次新增的 `ABP_PVP_FP_Locomotion`）、`AnimBP/Environment/`（1 个环境灯具动画蓝图）、`Interfaces/`（1 个动画状态蓝图接口）、`Notifies/`（9 个通用动画通知蓝图）。动画蓝图 / 通知 / 接口不再散落在 `Actors/` 或 `Characters/` |
+| `Animation/` | 16 | 动画逻辑唯一落点，按资产类型再分子目录：`AnimBP/`（5 个角色动画蓝图，含 `ABP_PVP_FP_Locomotion` 与武器动画蓝图 `ABP_PVP_FP_Weapon_AR`）、`AnimBP/Environment/`（1 个环境灯具动画蓝图）、`Interfaces/`（1 个动画状态蓝图接口）、`Notifies/`（9 个通用动画通知蓝图）。动画蓝图 / 通知 / 接口不再散落在 `Actors/` 或 `Characters/` |
 | `Characters/` | 2 | `BP_PVPBaseCharacter`（继承 `APVPBaseCharacter` 的玩家角色蓝图，`DefaultPawnClass` 指向它）、`BP_PVP_BaseCharacter`（从第三方迁移的完整角色逻辑蓝图副本，动画蓝图与通知内部引用它，当前未接入 GameMode） |
 | `Game/` | 2 | `BP_PVPGameMode`（默认 Pawn 指向 `BP_PVPBaseCharacter`、玩家控制器指向 `BP_PVPPlayerController`）、`BP_PVPPlayerController`（继承 `APVPPlayerController`） |
 | `Maps/` | 1 | `L_PVP_Showcase`：由第三方演示关卡复制而来的工程自有地图；无第三方角色实例，出生点为 `PlayerStart`，其余 Actor 全部保留且类引用改指向自有副本，WorldSettings 覆盖为 `BP_PVPGameMode` |
-| `Actors/` | 19 | 由第三方逻辑资产复制而来的 Actor 蓝图自有副本：墙体框架 7 个、施工灯基类、信息板、武器 / 弹匣 / 附件 / 配置、物理对象（弹壳 / 弹匣 / 注射器 / 瓶盖）与注射器蓝图。只放 Actor 蓝图；动画蓝图、动画通知、控件蓝图、枚举与结构体已迁出 |
+| `Actors/` | 20 | 19 个由第三方逻辑资产复制而来的 Actor 蓝图自有副本（墙体框架 7 个、施工灯基类、信息板、武器 / 弹匣 / 附件 / 配置、物理对象与注射器），加 1 个本轮新建的 `BP_PVP_Weapon_AR`（父类 `APVPWeaponActor`，配置 AR 网格 / 武器 ABP / 拾取半径 / 成对 Montage）。只放 Actor 蓝图；动画蓝图、动画通知、控件蓝图、枚举与结构体已迁出 |
 | `Input/` | 31 | 29 个 `IA_PVP_*` 输入动作、`IMC_PVP_Default` 输入映射与 `DA_PVP_InputConfig` 输入配置数据资产。`DA_PVP_InputConfig` 把 `InputTag.Move/Look/Jump/Run` 映射到 4 个 IA 并挂到 `BP_PVPBaseCharacter` CDO；IMC 由 `APVPPlayerController` 在代码中默认添加。`IA_PVP_Look` 的 `Mouse2D` 映射带 **Negate(Y)**（俯仰方向修正，勿删除，详见 `Docs/Input/Input-Dev.md` 踩坑 1） |
 | `Data/` | 1 | `DT_PVP_TextStyle` 文本样式数据表（UI 蓝图依赖） |
 | `Types/` | 5 | 4 个枚举（`E_PVP_CameraPerspectives`、`E_PVP_FireMode`、`E_PVP_GripAttachment`、`E_PVP_Stance`）与 `S_PVP_SpringData` 弹簧参数结构体；被角色动画蓝图、角色 / 武器蓝图与控件蓝图引用 |
@@ -264,7 +264,7 @@ Content/PVP/                          78   自有逻辑资产根
 | `PVP/Game/` | `Source/PVPDemo/Game/` | 游戏模式与玩家控制器蓝图，继承 `APVPGameMode` / `APVPPlayerController` |
 | `PVP/Maps/` | 关卡 / 玩法 | `L_PVP_Showcase` 的 WorldSettings 指向 `BP_PVPGameMode`，出生点由 `PlayerStart` 提供 |
 | `PVP/Characters/` | `Source/PVPDemo/Character/` | `BP_PVPBaseCharacter` 继承 `APVPBaseCharacter`，是指向 `DefaultPawnClass` 的蓝图，CDO 引用 `DA_PVP_InputConfig`；`BP_PVP_BaseCharacter` 为第三方完整角色逻辑副本，动画蓝图与通知内部引用它，当前未接入 GameMode |
-| `PVP/Animation/` | `Source/PVPDemo/Animation/` | `AnimBP/` 承接迁移后的角色动画蓝图（其中 `ABP_PVP_FP_BaseCharacter` 也是 `APVPBaseCharacter` 的第一人称 AnimClass 默认值）与新建的 `ABP_PVP_FP_Locomotion`（父类 `UPVPAnimInstanceBase`，已接到 `BP_PVPBaseCharacter` 的 Mesh AnimClass）；`Interfaces/` 提供动画状态契约，`Notifies/` 被武器蒙太奇与武器蓝图引用 |
+| `PVP/Animation/` | `Source/PVPDemo/Animation/`、`Source/PVPDemoEditor/PVPAnimBlueprintBuilder` | `AnimBP/` 承接迁移后的角色动画蓝图（其中 `ABP_PVP_FP_BaseCharacter` 也是 `APVPBaseCharacter` 的第一人称 AnimClass 默认值）、`ABP_PVP_FP_Locomotion`（父类 `UPVPAnimInstanceBase`，已接到 `BP_PVPBaseCharacter` 的 Mesh AnimClass，并原地插入 `DefaultSlot`）与武器 ABP `ABP_PVP_FP_Weapon_AR`（`A_PVP_WEP_AR_Reference` + `DefaultSlot`）；`Interfaces/` 提供动画状态契约，`Notifies/` 被武器蒙太奇与武器蓝图引用 |
 | `PVP/Types/` | `Source/PVPDemo/Character/`、`Game/` | 枚举与结构体承载角色视角 / 开火模式 / 握持方式 / 站姿与弹簧参数语义，供动画蓝图、角色与武器蓝图及 UI 读取 |
 | `PVP/Input/` | `Source/PVPDemo/Input/`、`GAS/PVPGameplayTags` | IA / IMC / `DA_PVP_InputConfig` 提供动作与语义映射，供角色按 Tag 绑定、控制器注入 IMC |
 | `Characters/` | `Source/PVPDemo/Character/`、`Animation/` | 提供角色网格、姿势与动画素材；角色逻辑在源码层实现 |
@@ -274,7 +274,7 @@ Content/PVP/                          78   自有逻辑资产根
 | `UI/` | 后续 UI 层 | 字体资源供界面使用 |
 | `Environment/` `Props/` | 关卡/玩法 | 场景物件与可交互道具的美术资源 |
 
-> 说明：源码目录 `Source/PVPDemo/` 当前已落地 `Character/PVPBaseCharacter.h/.cpp`、`Game/PVPGameMode.h/.cpp`、`Game/PVPPlayerController.h/.cpp`、`Input/PVPInputConfig.h/.cpp`、`Input/PVPInputComponent.h/.cpp`、`GAS/PVPGameplayTags.h/.cpp`（仅输入 Tag）、`Animation/PVPAnimInstanceBase.h/.cpp`（动画实例基类）与 `PVPDemoEditor/PVPAnimBlueprintBuilder.h/.cpp`（动画蓝图构建器）；逻辑资产 `Animation/AnimBP/ABP_PVP_FP_Locomotion`（由 `Content/Python/setup_pvp_anim_blueprint.py` 生成，已手动接到 `BP_PVPBaseCharacter` 的 Mesh AnimClass；C++ 构造期默认仍是 `ABP_PVP_FP_BaseCharacter`）；`Camera/`、`Equipment/` 仍为规划中的空目录（见 `Docs/Source-Structure.md`）；编辑器期工具在 `Source/PVPDemoEditor/`。
+> 说明：源码目录 `Source/PVPDemo/` 当前已落地 `Character/PVPBaseCharacter.h/.cpp`（含 `EquipmentComponent`）、`Equipment/PVPWeaponActor.h/.cpp`、`Equipment/PVPEquipmentComponent.h/.cpp`、`Game/PVPGameMode.h/.cpp`、`Game/PVPPlayerController.h/.cpp`、`Input/PVPInputConfig.h/.cpp`、`Input/PVPInputComponent.h/.cpp`、`GAS/PVPGameplayTags.h/.cpp`（仅输入 Tag）、`Animation/PVPAnimInstanceBase.h/.cpp`（动画实例基类）与 `PVPDemoEditor/PVPAnimBlueprintBuilder.h/.cpp`（动画蓝图构建器，含武器 ABP 与 Slot 插入）；逻辑资产 `Animation/AnimBP/ABP_PVP_FP_Locomotion`（由 `Content/Python/setup_pvp_anim_blueprint.py` 生成，已接到 `BP_PVPBaseCharacter` 的 Mesh AnimClass，并已原地插入 `DefaultSlot`；C++ 构造期默认仍是 `ABP_PVP_FP_BaseCharacter`）、`Animation/AnimBP/ABP_PVP_FP_Weapon_AR` 与 `Actors/BP_PVP_Weapon_AR`（由 `Content/Python/setup_pvp_weapon.py` 生成）；`Camera/` 仍为规划中的空目录（见 `Docs/Source-Structure.md`）；编辑器期工具在 `Source/PVPDemoEditor/`。
 
 ---
 
@@ -287,8 +287,8 @@ Content/PVP/                          78   自有逻辑资产根
 5. **重复执行迁移**：迁移脚本 `Content/Python/migrate_pvp_assets.py` 为幂等实现，已存在的目标资产会跳过，不会覆盖手动修改；可安全重复运行以同步原包新增的美术资产。
 6. **编辑器刷新**：资产由命令行编辑器写入，若当前打开的编辑器未显示，请在 Content Browser 按 F5 刷新或重启编辑器。
 7. **两根分离**：`Content/PVPDemo/` 只放美术表现资产，`Content/PVP/` 只放逻辑资产；美术资产不得反向引用逻辑资产，逻辑资产可引用美术资产与 `/Script/PVPDemo.*` 原生类。
-8. **脚本登记**：`Content/Python/` 下的脚本与用途——`migrate_pvp_assets.py`（第三方美术迁移，幂等）、`dump_tfa_character.py`（参考角色组件 Dump）、`compare_tfa_character.py`（1P 对照校验，派生蓝图已迁至 `/Game/PVP/Characters`）、`setup_pvp_game_framework.py`（框架蓝图/地图生成 + 引用重定向收敛，路由复用 `pvp_logic_layout.py`）、`verify_pvp_game_framework.py`（零依赖与地图状态断言）、`setup_pvp_input.py`（校验 IA ValueType / IMC 按键映射与 Look Y 轴极性，生成并挂接 `DA_PVP_InputConfig`，输出输入报告）、`setup_pvp_anim_blueprint.py`（生成 / 重建 `Animation/AnimBP/ABP_PVP_FP_Locomotion`，编译并读回状态机与过渡，输出动画蓝图报告）、`pvp_logic_layout.py`（逻辑资产布局单一事实来源：前缀路由、移动/删除清单、期望数量）、`reorg_pvp_logic_assets.py`（逻辑资产归位执行器，默认 dry-run，`PVP_REORG_APPLY=1` 执行移动 + 备份 + 重定向清理 + 报告）、`verify_pvp_asset_layout.py`（离线校验目录布局、旧路径零残留与 C++ 默认资产路径）。
-9. **地图约定**：`L_PVP_Showcase` 由 `L_TFA_AR_Showcase` 复制而来，**只删除了第三方角色实例**（改为 `PlayerStart`），其余 Actor 全部保留并将类引用改为自有副本；不复制 `_BuiltData`（工程 `r.AllowStaticLighting=False`），地图内 `LevelBuildData` 保持对源包的只读引用。源地图与 `_BuiltData` 的 SHA256 记录在 `Saved/PVPGameFrameworkReport/source_hashes.json`，脚本执行前后必须一致。
+8. **脚本登记**：`Content/Python/` 下的脚本与用途——`migrate_pvp_assets.py`（第三方美术迁移，幂等）、`dump_tfa_character.py`（参考角色组件 Dump）、`compare_tfa_character.py`（1P 对照校验，派生蓝图已迁至 `/Game/PVP/Characters`）、`setup_pvp_game_framework.py`（框架蓝图/地图生成 + 引用重定向收敛，路由复用 `pvp_logic_layout.py`）、`verify_pvp_game_framework.py`（零依赖与地图状态断言，允许一把 `PVP_WeaponPickup_AR`）、`setup_pvp_input.py`（校验 IA ValueType / IMC 按键映射与 Look Y 轴极性，生成并挂接 `DA_PVP_InputConfig`，输出输入报告）、`setup_pvp_anim_blueprint.py`（生成 / 重建 `Animation/AnimBP/ABP_PVP_FP_Locomotion`，编译并读回状态机 / 过渡 / `DefaultSlot`，输出动画蓝图报告）、`setup_pvp_weapon.py`（生成 `BP_PVP_Weapon_AR` 与 `ABP_PVP_FP_Weapon_AR`、给角色 ABP 原地加 `DefaultSlot`、在 `L_PVP_Showcase` 放置 / 更新武器拾取物，输出武器报告）、`pvp_logic_layout.py`（逻辑资产布局单一事实来源：前缀路由、移动/删除清单、期望数量）、`reorg_pvp_logic_assets.py`（逻辑资产归位执行器，默认 dry-run，`PVP_REORG_APPLY=1` 执行移动 + 备份 + 重定向清理 + 报告）、`verify_pvp_asset_layout.py`（离线校验目录布局、旧路径零残留与 C++ 默认资产路径）。
+9. **地图约定**：`L_PVP_Showcase` 由 `L_TFA_AR_Showcase` 复制而来，**只删除了第三方角色实例**（改为 `PlayerStart`），其余 Actor 全部保留并将类引用改为自有副本；本轮另外在 PlayerStart 前方放置 1 个带 `PVP_WeaponPickup_AR` 标签的 `BP_PVP_Weapon_AR` 拾取物（由 `setup_pvp_weapon.py` 幂等维护），因此目标地图比源地图多 1 个 Actor，`verify_pvp_game_framework.py` 按 `source + weapon_pickups` 校验。不复制 `_BuiltData`（工程 `r.AllowStaticLighting=False`），地图内 `LevelBuildData` 保持对源包的只读引用。源地图与 `_BuiltData` 的 SHA256 记录在 `Saved/PVPGameFrameworkReport/source_hashes.json`，脚本执行前后必须一致。
 10. **打包注意**：`Config/DefaultEngine.ini` 的 `GameDefaultMap` 未改动，打包时若未启用"全量 Cook"需手动把 `L_PVP_Showcase` 加入 `MapsToCook`。
 
 ---
@@ -301,6 +301,9 @@ Content/PVP/                          78   自有逻辑资产根
 - `Docs/Input/README.md` — 输入模块导航、已实现动作 / 绑定事件 / 回调函数速查
 - `Docs/Input/Input-Dev.md` — 输入模块开发流程、新增动作 SOP、踩坑清单（含 Look 俯仰极性约定）与校验流程
 - `Docs/Input/Input-Integration.md` — 输入模块依赖关系、数据流与对外接口契约
+- `Docs/Equipment/README.md` — 装备模块导航、武器 / 装备组件 / 成对 Montage 权威表
+- `Docs/Equipment/Equipment-Dev.md` — 武器资产生成 SOP、踩坑清单与 PIE 冒烟
+- `Docs/Equipment/Equipment-Integration.md` — 装备依赖方向、C++ / 资产接口契约
 - `Saved/MigrationReports/migration_manifest.json` — 资产迁移清单（源路径 → 目标路径 → 新名 → 类型）
 - `Saved/MigrationReports/migration_verify.json` — 迁移校验结果
 - `Saved/PVPGameFrameworkReport/report.json|md` — 框架蓝图/地图生成与重定向收敛报告
@@ -309,4 +312,6 @@ Content/PVP/                          78   自有逻辑资产根
 - `Saved/PVPInputReport/report.json|md` — 输入资产校验结果、`DA_PVP_InputConfig` 生成与角色蓝图挂接状态
 - `Saved/PVPAssetReorgReport/report.json|md` — 逻辑资产归位报告（移动表 / 删除表 / 备份 SHA256 / 重定向清理 / 校验结果）
 - `Saved/PVPAssetReorgReport/verify.json|md` — 离线布局校验结果（目录数量、旧路径零残留、C++ 默认资产路径）
+- `Saved/PVPWeaponReport/report.json|md` — 武器 BP / 武器 ABP / 角色 `DefaultSlot` / 关卡拾取物生成与读回报告
+- `Saved/PVPWeaponReport/weapon_abp_builder.json`、`slot_builder.json` — 武器 ABP 构建与角色 Slot 插入的 C++ 构建器报告
 - `Saved/AssetBackup/<timestamp>/` — 删除重复控件蓝图前的文件级备份，可回滚

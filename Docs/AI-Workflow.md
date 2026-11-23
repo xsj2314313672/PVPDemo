@@ -73,7 +73,7 @@
 | 已有模块新增能力，或对外接口、依赖方向、数据流、资产契约变化 | 导航 `README.md` 的能力速查表 + `<模块>-Integration.md` |
 | 开发中出现新的坑点 | `<模块>-Dev.md` 的踩坑清单 |
 
-- 模块目录只在进入实现阶段时建立；`Camera/`、`Camera/Modes/`、`Equipment/` 等预留模块不提前建空目录。
+- 模块目录只在进入实现阶段时建立；`Camera/`、`Camera/Modes/` 等预留模块不提前建空目录（`Equipment/` 已进入实现阶段并建立 `Docs/Equipment/`）。
 - 模块目录可追加维护文档（如 `<模块>-Validation.md`、`<模块>-Tags.md`），命名以 `<模块>-` 开头，并在 `README.md` 的文档清单中登记，禁止孤儿文档。
 - 新建或变更后必须同步 `AGENTS.md` 的「模块文档目录」与文档地图。
 
