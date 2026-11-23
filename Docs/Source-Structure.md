@@ -4,7 +4,7 @@
 
 > 说明：文中的"FPS 3C"是技术方案名称（第一人称射击品类），**工程代码统一使用 `PVP` 作为类与文件前缀**（如 `APVPCharacter`），导出宏为 `PVPDEMO_API`。
 
-> 当前状态：`Character/` 已落地 `PVPBaseCharacter.h/.cpp`（基础第一人称角色：胶囊与 Mesh 默认值对齐参考蓝图 `BP_TFA_BaseCharacter`，`CameraFP` 挂在 `head` 骨骼，已接入 Move / Look / Jump / Run 原生输入与走跑速度切换）；`Input/` 已落地 `PVPInputConfig`（Tag ↔ InputAction 数据资产）与 `PVPInputComponent`（按 Tag 绑定 Enhanced Input）；`GAS/` 已落地 `PVPGameplayTags`（仅 `InputTag.Move/Look/Jump/Run` 四个原生 Tag，其余 GAS 能力仍未搭建）；`Game/` 已落地 `PVPGameMode.h/.cpp` 与 `PVPPlayerController.h/.cpp`（会话与玩家入口：默认 Pawn / 玩家控制器、初始化与开场日志，PlayerController 在代码中默认加载并注入 `IMC_PVP_Default`）；`Animation/` 已落地 `PVPAnimInstanceBase.h/.cpp`（`UAnimInstance` 基类：游戏线程采样、动画线程计算 Move / Run / Jump locomotion 变量，供新建动画蓝图继承）与逻辑资产 `ABP_PVP_FP_Locomotion`（四状态 locomotion 图，尚未接线到角色）；编辑器期工具模块 `Source/PVPDemoEditor/` 已落地资产引用重定向库与动画蓝图构建器。`Camera/`、`Camera/Modes/`、`Equipment/` 仍为空目录。本文其余内容为规划职责，按实际实现进度同步更新。
+> 当前状态：`Character/` 已落地 `PVPBaseCharacter.h/.cpp`（基础第一人称角色：胶囊与 Mesh 默认值对齐参考蓝图 `BP_TFA_BaseCharacter`，`CameraFP` 挂在 `head` 骨骼，已接入 Move / Look / Jump / Run 原生输入与走跑速度切换）；`Input/` 已落地 `PVPInputConfig`（Tag ↔ InputAction 数据资产）与 `PVPInputComponent`（按 Tag 绑定 Enhanced Input）；`GAS/` 已落地 `PVPGameplayTags`（仅 `InputTag.Move/Look/Jump/Run` 四个原生 Tag，其余 GAS 能力仍未搭建）；`Game/` 已落地 `PVPGameMode.h/.cpp` 与 `PVPPlayerController.h/.cpp`（会话与玩家入口：默认 Pawn / 玩家控制器、初始化与开场日志，PlayerController 在代码中默认加载并注入 `IMC_PVP_Default`）；`Animation/` 已落地 `PVPAnimInstanceBase.h/.cpp`（`UAnimInstance` 基类：游戏线程采样、动画线程计算 Move / Run / Jump locomotion 变量，供新建动画蓝图继承）与逻辑资产 `ABP_PVP_FP_Locomotion`（四状态 locomotion 图，已在 `BP_PVPBaseCharacter` 上接线；C++ 构造期默认仍为 `ABP_PVP_FP_BaseCharacter`）；编辑器期工具模块 `Source/PVPDemoEditor/` 已落地资产引用重定向库与动画蓝图构建器。`Camera/`、`Camera/Modes/`、`Equipment/` 仍为空目录。本文其余内容为规划职责，按实际实现进度同步更新。
 
 > **阶段说明**：项目处于初期，`Camera/` 与 `Camera/Modes/` 下规划的**相机模式栈仅为架构预留，当前阶段不实现、不接入**。初期先用简单相机方案（`CameraFP` 挂在角色 `head` 骨骼上，位置由第一人称动画驱动；视角旋转由 Controller 的 `ControlRotation` 提供，`bUsePawnControlRotation=true`）跑通角色与输入，待基础稳定后再引入模式栈。其他规划文件也均为后续阶段的落点。
 
@@ -107,7 +107,7 @@ Source/
 
 **协作关系**：只读 `Character/` 与 `GAS/` 的状态；装备切换由 `Equipment/` 驱动动画层；相机位姿来自 `Camera/`。
 
-> **接线状态**：`APVPBaseCharacter` 构造函数默认 AnimClass 仍是工程自有 `/Game/PVP/Animation/AnimBP/ABP_PVP_FP_BaseCharacter`，`BP_PVPBaseCharacter` 的 Mesh / AnimClass 继承该默认值；`UPVPAnimInstanceBase` 的新动画蓝图 `ABP_PVP_FP_Locomotion` 已由编辑器构建器生成（`Ground` / `JumpStart` / `Falling` / `Land`），但**未挂到角色**。
+> **接线状态**：`APVPBaseCharacter` 构造函数默认 AnimClass 仍是工程自有 `/Game/PVP/Animation/AnimBP/ABP_PVP_FP_BaseCharacter`（C++ 未改）；`BP_PVPBaseCharacter` 的 Mesh AnimClass 已在编辑器中手动切到 `ABP_PVP_FP_Locomotion`（由编辑器构建器生成的 `Ground` / `JumpStart` / `Falling` / `Land` 四状态图），实例覆盖默认值并实际生效；视觉 / PIE 复核仍待做。
 
 > 动画模块文档见 `Docs/Animation/`：`README.md`（变量权威表与接线入口）、`Animation-Dev.md`（线程安全设计、新增变量 SOP 与踩坑）、`Animation-Integration.md`（依赖与接口契约）。
 

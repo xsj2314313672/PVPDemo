@@ -19,7 +19,7 @@
 - 采集对象：`APVPBaseCharacter` 的 `Velocity`、`MaxWalkSpeed`、`RunSpeed`、`bIsRunning`，以及 `UCharacterMovementComponent` 的地面 / 空中模式。
 - 输出：Move / Run / Jump 三组蓝图只读 locomotion 变量，供 AnimGraph、状态机与混合空间直接读取。
 - 已落地动画蓝图：`/Game/PVP/Animation/AnimBP/ABP_PVP_FP_Locomotion`（`Ground` / `JumpStart` / `Falling` / `Land` 四状态）。
-- 接线方式：`UPVPAnimInstanceBase` 作为新动画蓝图父类；`ABP_PVP_FP_Locomotion` 已生成但**未**挂到角色，`APVPBaseCharacter` / `BP_PVPBaseCharacter` / 现有 `ABP_PVP_FP_BaseCharacter` 均未改动。
+- 接线方式：`UPVPAnimInstanceBase` 作为新动画蓝图父类；`ABP_PVP_FP_Locomotion` 已生成，并已在编辑器中手动挂到 `BP_PVPBaseCharacter` 的 Mesh AnimClass；`APVPBaseCharacter` 构造期默认与现有 `ABP_PVP_FP_BaseCharacter` 均未改动，实际生效来自蓝图实例覆盖。
 
 **非职责**（不属于本模块，不要在这里实现）：
 
@@ -46,7 +46,7 @@
 | 查当前有哪些动画变量、含义与默认值 | 本文第 3 节 |
 | 重新生成 `ABP_PVP_FP_Locomotion` | 本文第 4 节 → `Animation-Dev.md` 第 4.2 节 |
 | 修改状态 / 过渡 / BlendSpace 绑定 | 本文第 3.4 节 → `Animation-Dev.md` 第 3 / 4 节 |
-| 把新 ABP 接到角色上 | 本文第 4 节；本轮未接线 |
+| 确认新 ABP 的接线与生效方式 | 本文第 3.1 / 4 节（已接到 `BP_PVPBaseCharacter`，C++ 默认未改）→ `Animation-Integration.md` 第 4.2 / 5.1 节 |
 | 排查变量不更新 / 全是默认值 | `Animation-Dev.md` 第 5 节踩坑 1、2、4 + 第 6 节 |
 | 新增一个动画变量或采集一个新的动作状态 | `Animation-Dev.md` 第 4 节 SOP |
 | 查 C++ 接口签名与变量契约 | `Animation-Integration.md` 第 4 节 |
@@ -67,7 +67,7 @@
 | 游戏线程采样 | `NativeUpdateAnimation` | 只采样原始值（速度 / Yaw / `MaxWalkSpeed` / `RunSpeed` / `bIsRunning` / 地面与空中模式） |
 | 工作线程计算 | `NativeThreadSafeUpdateAnimation` | 依据采样快照写入全部蓝图变量；不访问 Owner / World，不打日志 |
 | 动画蓝图资产 | `ABP_PVP_FP_Locomotion` | `/Game/PVP/Animation/AnimBP/`，父类 `UPVPAnimInstanceBase`，骨骼 `SKEL_PVP_Mannequin`，由 `Content/Python/setup_pvp_anim_blueprint.py` + 编辑器期 C++ 构建器生成 |
-| 接线状态 | **新 ABP 已创建但未接线** | `APVPBaseCharacter` 构造期默认 AnimClass 仍是 `ABP_PVP_FP_BaseCharacter`（`/Game/PVP/Animation/AnimBP/`），`BP_PVPBaseCharacter` 继承该默认值；新 ABP 未挂到角色 |
+| 接线状态 | **新 ABP 已接到角色蓝图** | `APVPBaseCharacter` 构造期默认 AnimClass 仍是 `ABP_PVP_FP_BaseCharacter`（`/Game/PVP/Animation/AnimBP/`）；`BP_PVPBaseCharacter` 的 Mesh AnimClass 已手动切到 `ABP_PVP_FP_Locomotion`，实例覆盖 C++ 默认值；视觉 / PIE 复核待做 |
 
 ### 3.2 变量契约
 
@@ -131,7 +131,7 @@
 | 每帧（游戏线程） | `UPVPAnimInstanceBase::NativeUpdateAnimation` | 采样速度、角色 Yaw、`MaxWalkSpeed`、`RunSpeed`、`bIsRunning`、`IsMovingOnGround()`、`IsFalling()` 到快照；缓存失效时尝试重新解析 |
 | 每帧（动画工作线程） | `UPVPAnimInstanceBase::NativeThreadSafeUpdateAnimation` | 由快照计算并写入所有蓝图变量；快照无效时重置为默认值 |
 | 动画蓝图生成 | `setup_pvp_anim_blueprint.py` + `UPVPAnimBlueprintBuilder` | 加载骨骼 / BlendSpace / 跳跃序列 → 删除旧目标 ABP → 创建 `ABP_PVP_FP_Locomotion`、搭建四状态图与规则 → 编译、保存、读回 |
-| 角色接线 | 用户手动操作（本轮未做） | 需要实际生效时把 `BP_PVPBaseCharacter` 的 Mesh Anim Class 指向 `ABP_PVP_FP_Locomotion` |
+| 角色接线 | 用户手动完成 | `BP_PVPBaseCharacter` 的 Mesh Anim Class 已指向 `ABP_PVP_FP_Locomotion`，覆盖 `APVPBaseCharacter` 构造期默认 AnimClass；后续视觉复核见第 6 节 |
 
 **关键日志**：
 
@@ -146,8 +146,8 @@ LogPVPAnimInstanceBase: Warning: <AnimInstance>: <Character> has no character mo
 
 ## 5. 未实现能力与扩展方向
 
-- **角色接线**：`APVPBaseCharacter` 构造函数默认 AnimClass 仍是 `/Game/PVP/Animation/AnimBP/ABP_PVP_FP_BaseCharacter`（工程自有，不再引用 `/Game/InfimaGames`），`BP_PVPBaseCharacter` 的 Mesh / AnimClass 继承该默认值；新 `ABP_PVP_FP_Locomotion` 已创建但未挂到角色。
-- **新 ABP 的运行时验证**：当前只做编译、图结构读回与布局校验；PIE / Persona 视觉确认需在接线或手动预览后完成。
+- **角色接线**：`APVPBaseCharacter` 构造函数默认 AnimClass 仍是 `/Game/PVP/Animation/AnimBP/ABP_PVP_FP_BaseCharacter`（工程自有，不再引用 `/Game/InfimaGames`）；`BP_PVPBaseCharacter` 的 Mesh AnimClass 已手动切到 `ABP_PVP_FP_Locomotion`，实例覆盖默认值，新 ABP 已生效。
+- **新 ABP 的运行时验证**：当前只做编译、图结构读回与布局校验；接线已完成，PIE / Persona 视觉确认待做，重跑生成脚本后还需复查蓝图覆盖是否保留。
 - **Montage / 上下半身分层**：Ground 状态只处理整个人物的 locomotion；瞄准偏移、持枪分层、Montage Slot 尚未接入。
 - **Look 变量**：未提供 `AimPitch` / 视角偏航增量；如后续上半身或瞄准动画需要，再按 `ControlRotation` 追加。
 - **蹲伏 / 瞄准 / 持枪**：对应动作尚未绑定或模块未实现，未预留空变量。
@@ -175,7 +175,7 @@ LogPVPAnimInstanceBase: Warning: <AnimInstance>: <Character> has no character mo
 | 新增 / 删除 / 重命名动画变量，或修改语义与默认值 | 本文第 3.2 / 3.3 节 + `Animation-Integration.md` 第 4 节 + `Animation-Dev.md` 第 4 节 SOP |
 | 修改生命周期（采样 / 计算时机、线程安全边界） | 本文第 3.1 / 4 节 + `Animation-Dev.md` 第 3 节 + `Animation-Integration.md` 第 4 节 |
 | 新增采集来源（动作、组件、GAS 状态） | 本文第 3 节 + `Animation-Integration.md` 第 3 / 6 节；涉及输入语义时链接 `Docs/Input/README.md` 第 3 节 |
-| 角色接线方式变化（AnimClass 指向、C++ 默认 ABP） | 本文第 3.1 / 5 节 + `Animation-Integration.md` 第 5 节 + `Docs/Character/README.md` 与 `Docs/Character/Character-Integration.md` 对应条目 |
+| 角色接线状态或 AnimClass 覆盖方式变化（C++ 默认 ABP / BP 实例覆盖） | 本文第 3.1 / 4 / 5 节 + `Animation-Integration.md` 第 4.2 / 5.1 节 + `Docs/Source-Structure.md` + `Docs/Character/README.md` 与 `Docs/Character/Character-Integration.md` 对应条目 |
 | 动画蓝图状态 / 过渡 / 资产引用变化 | 本文第 3.4 节 + `Animation-Dev.md` 第 3 / 4 / 5 节 + `Animation-Integration.md` 第 4.2 节 |
 | 修改构建器或生成脚本 | 本文第 4 / 6 节 + `Animation-Dev.md` 第 4.2 / 5 节 + `Docs/Source-Structure.md` 第 2.8 节 |
 | 出现新的坑点或校验步骤 | `Animation-Dev.md` 第 5 / 6 节（踩坑四要素齐全） |

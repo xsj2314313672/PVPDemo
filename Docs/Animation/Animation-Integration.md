@@ -25,7 +25,7 @@
 - 不参与视角旋转：Look 由 Controller 的 `ControlRotation` 驱动，动画不输出 AimPitch / Look 变量。
 - 不制作美术动画内容（动画序列 / 混合空间 / Montage）；逻辑动画蓝图 `ABP_PVP_FP_Locomotion` 由编辑器期构建器 + `Content/Python/` 脚本产出。
 - 不实现 GAS 技能动画、程序化动画、1P/3P 拆分与相机模式栈（后续阶段）。
-- 不修改角色类、角色蓝图与现有动画蓝图：`ABP_PVP_FP_Locomotion` 已创建，但**未接线**到角色。
+- 不修改角色类 C++ 构造期默认值与现有动画蓝图；`ABP_PVP_FP_Locomotion` 已由用户在编辑器中挂到 `BP_PVPBaseCharacter` 的 Mesh AnimClass，接线通过蓝图实例覆盖完成。
 
 ---
 
@@ -50,11 +50,11 @@
 | --- | --- | --- |
 | `APVPBaseCharacter` | `Source/PVPDemo/Character/PVPBaseCharacter.h` | 采集 `Velocity`、`MaxWalkSpeed`、`RunSpeed`、`bIsRunning` |
 | `UCharacterMovementComponent` | 引擎 | 采集地面 / 空中移动模式与垂直速度 |
-| `ABP_PVP_FP_Locomotion` | `/Game/PVP/Animation/AnimBP/ABP_PVP_FP_Locomotion` | 本次生成的 locomotion ABP，父类 `UPVPAnimInstanceBase`；四状态 + 6 条过渡；**未接线** |
-| `ABP_PVP_FP_BaseCharacter` | `/Game/PVP/Animation/AnimBP/ABP_PVP_FP_BaseCharacter`，`APVPBaseCharacter` 构造函数通过 `ConstructorHelpers` 装配 | 迁移自第三方的现有动画蓝图，已改用工程自有路径，不再依赖 `/Game/InfimaGames` |
-| `BP_PVPBaseCharacter` | `/Game/PVP/Characters/BP_PVPBaseCharacter` | Mesh / AnimClass 继承 C++ 默认值（同一 `ABP_PVP_FP_BaseCharacter`），未显式覆盖 |
+| `ABP_PVP_FP_Locomotion` | `/Game/PVP/Animation/AnimBP/ABP_PVP_FP_Locomotion` | 本次生成的 locomotion ABP，父类 `UPVPAnimInstanceBase`；四状态 + 6 条过渡；已接到 `BP_PVPBaseCharacter` 的 Mesh AnimClass |
+| `ABP_PVP_FP_BaseCharacter` | `/Game/PVP/Animation/AnimBP/ABP_PVP_FP_BaseCharacter`，`APVPBaseCharacter` 构造函数通过 `ConstructorHelpers` 装配 | 迁移自第三方的现有动画蓝图，已改用工程自有路径，不再依赖 `/Game/InfimaGames`；仍是 C++ 构造期默认，但在 `BP_PVPBaseCharacter` 上已被覆盖 |
+| `BP_PVPBaseCharacter` | `/Game/PVP/Characters/BP_PVPBaseCharacter` | Mesh 网格仍来自 C++ 默认；AnimClass 已在编辑器中显式覆盖为 `ABP_PVP_FP_Locomotion` |
 
-**未接线现状**：`ABP_PVP_FP_Locomotion` 已生成、编译并读回；角色仍使用 `ABP_PVP_FP_BaseCharacter`。要让新 ABP 生效，需手动把 `BP_PVPBaseCharacter` 的 Mesh Anim Class 指向它（本轮未做）。
+**接线现状**：`ABP_PVP_FP_Locomotion` 已生成、编译并读回，用户已在编辑器中把 `BP_PVPBaseCharacter` 的 Mesh Anim Class 指向它；`APVPBaseCharacter` 构造期默认仍是 `ABP_PVP_FP_BaseCharacter`，蓝图实例覆盖后新 ABP 实际生效。PIE / 视觉复核，以及生成脚本重跑后的覆盖复查仍待做。
 
 ---
 
@@ -114,15 +114,15 @@
 
 | 资产 | 路径 | 消费方 / 状态 |
 | --- | --- | --- |
-| `ABP_PVP_FP_Locomotion` | `/Game/PVP/Animation/AnimBP/ABP_PVP_FP_Locomotion` | 父类 `UPVPAnimInstanceBase`；`Ground` / `JumpStart` / `Falling` / `Land`；**未接线** |
-| `ABP_PVP_FP_BaseCharacter` | `/Game/PVP/Animation/AnimBP/ABP_PVP_FP_BaseCharacter` | 当前实际生效的动画蓝图（迁移资产），内部 Cast 目标为 `BP_PVP_BaseCharacter` |
-| `BP_PVPBaseCharacter` | `/Game/PVP/Characters/BP_PVPBaseCharacter` | Mesh 组件需指向新动画蓝图才会生效；当前继承 C++ 默认值 `ABP_PVP_FP_BaseCharacter` |
+| `ABP_PVP_FP_Locomotion` | `/Game/PVP/Animation/AnimBP/ABP_PVP_FP_Locomotion` | 父类 `UPVPAnimInstanceBase`；`Ground` / `JumpStart` / `Falling` / `Land`；已接到 `BP_PVPBaseCharacter` 的 Mesh AnimClass |
+| `ABP_PVP_FP_BaseCharacter` | `/Game/PVP/Animation/AnimBP/ABP_PVP_FP_BaseCharacter` | C++ 构造期默认 AnimClass（迁移资产），内部 Cast 目标为 `BP_PVP_BaseCharacter`；在 `BP_PVPBaseCharacter` 上已被覆盖，不再实际生效 |
+| `BP_PVPBaseCharacter` | `/Game/PVP/Characters/BP_PVPBaseCharacter` | Mesh AnimClass 已在编辑器中显式覆盖为 `ABP_PVP_FP_Locomotion`；网格仍来自 C++ 默认值 |
 
 **接线契约**：
 
 1. 新动画蓝图的 Parent Class 必须是 `PVPAnimInstanceBase`（不是 `AnimInstance`），否则无变量可用。
 2. 骨骼网格必须与原角色一致，否则变量有值但姿态错位。
-3. 切换 Anim Class 属于资产变更，必须由编辑器或 `Content/Python/` 脚本完成，不能手改 `.uasset`。
+3. 本次切换已由编辑器手动完成（`BP_PVPBaseCharacter` 的 Mesh AnimClass → `ABP_PVP_FP_Locomotion`）；后续同类变更仍必须由编辑器或 `Content/Python/` 脚本完成，不能手改 `.uasset`。
 
 ### 4.3 编辑器构建器与生成脚本
 
@@ -143,7 +143,7 @@
 
 1. `ABP_PVP_FP_Locomotion` 已由 `Docs/Animation/Animation-Dev.md` 第 4.3 节生成；需要改图时修改构建器并重跑脚本，不要手改生成物。
 2. 在 AnimGraph / 状态机 / 混合空间读取 `Docs/Animation/README.md` 第 3.2 节变量；只读，不写。
-3. 需要实际生效时，在 `BP_PVPBaseCharacter` 的 Mesh 组件上把 Anim Class 指向 `ABP_PVP_FP_Locomotion`；编辑器视口确认角色不再停在参考姿势。
+3. 接线已完成：`BP_PVPBaseCharacter` 的 Mesh Anim Class 指向 `ABP_PVP_FP_Locomotion`；重跑生成脚本后复查该覆盖，并在编辑器视口确认角色不再停在参考姿势。
 4. PIE 按 `Docs/Animation/Animation-Dev.md` 第 6.3 节冒烟；变量全为默认值时先查该文档第 5 节踩坑 1 / 4。
 
 ### 5.2 其他 C++ 模块读取动画状态
@@ -178,7 +178,7 @@
 | 变量语义 / 判定规则变化 | `Docs/Animation/README.md` 第 3.3 节、`Docs/Animation/Animation-Dev.md` 第 3 节 |
 | 采集源变化（角色 / 移动组件字段） | `NativeUpdateAnimation` 采样逻辑、`Docs/Animation/Animation-Dev.md` 第 2 / 4 节 |
 | 线程职责调整 | `Docs/Animation/Animation-Dev.md` 第 3 节设计决策与第 5 节踩坑 1 |
-| 接线（新动画蓝图 + Anim Class 切换） | 资产由编辑器 / `Content/Python/` 产出；`Docs/Content-Structure.md`、`Docs/Animation/README.md` 第 1 / 3.1 节"未接线"状态与三份文首日期 |
+| 接线状态或 AnimClass 覆盖方式变化 | 资产由编辑器 / `Content/Python/` 产出；`Docs/Content-Structure.md`、`Docs/Source-Structure.md`、`Docs/Animation/README.md` 第 1 / 3.1 / 4 / 5 节、`Docs/Character/` 三件套与三份文首日期 |
 | 状态 / 过渡 / BlendSpace 绑定变化 | `Docs/Animation/README.md` 第 3.4 节、`Docs/Animation/Animation-Dev.md` 第 3 / 4 / 5 节、本文第 4.3 节 |
 | 构建器或生成脚本变化 | `Source/PVPDemoEditor/PVPAnimBlueprintBuilder.*`、`Content/Python/setup_pvp_anim_blueprint.py`、`Docs/Source-Structure.md` 第 2.8 节、本文第 2.1 / 4.3 节 |
 | Build.cs 依赖变化 | `Source/PVPDemo/PVPDemo.Build.cs`、`Source/PVPDemoEditor/PVPDemoEditor.Build.cs`、`Docs/Source-Structure.md` 模块依赖段、本文第 2.1 节 |
@@ -207,7 +207,7 @@
   - `Docs/Input/Input-Integration.md` — 相机 / Look 边界
   - `Docs/Source-Structure.md` — 分层职责与阶段约束
 - 资产（现状）
-  - `/Game/PVP/Characters/BP_PVPBaseCharacter` — Mesh Anim Class 尚未切到新父类动画蓝图
+  - `/Game/PVP/Characters/BP_PVPBaseCharacter` — Mesh Anim Class 已切到 `ABP_PVP_FP_Locomotion`（C++ 构造期默认仍为 `ABP_PVP_FP_BaseCharacter`）
 - 规范
   - `AGENTS.md` — 上下文入口与硬约束
   - `Docs/AI-Workflow.md` — 模块文档制度与收尾校验

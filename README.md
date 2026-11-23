@@ -1,6 +1,6 @@
 # PVPDemo
 
-基于 Unreal Engine 5 的第一人称 PVP 射击玩法 Demo。当前已落地基础第一人称角色与相机（`Character/PVPBaseCharacter`）、会话与玩家入口层（`Game/PVPGameMode`、`Game/PVPPlayerController`）、动画实例基类（`Animation/PVPAnimInstanceBase`）与四状态 locomotion 动画蓝图（`ABP_PVP_FP_Locomotion`，尚未接线到角色）以及一张工程自有关卡 `L_PVP_Showcase`；规划中逐步接入 GAS 技能框架、移动/开镜、武器换弹与检视、动画蓝图分层与音效等模块。
+基于 Unreal Engine 5 的第一人称 PVP 射击玩法 Demo。当前已落地基础第一人称角色与相机（`Character/PVPBaseCharacter`）、会话与玩家入口层（`Game/PVPGameMode`、`Game/PVPPlayerController`）、动画实例基类（`Animation/PVPAnimInstanceBase`）与四状态 locomotion 动画蓝图（`ABP_PVP_FP_Locomotion`，已在 `BP_PVPBaseCharacter` 上接线，视觉复核待做）以及一张工程自有关卡 `L_PVP_Showcase`；规划中逐步接入 GAS 技能框架、移动/开镜、武器换弹与检视、动画蓝图分层与音效等模块。
 
 ## 目录结构
 

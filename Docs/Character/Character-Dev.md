@@ -19,7 +19,7 @@
 - 与参考蓝图 `BP_TFA_BaseCharacter` 的默认值对齐流程（`Content/Python/` 的 dump / compare 脚本）；
 - 角色相关踩坑、校验与 PIE 冒烟。
 
-不覆盖：输入语义与键位（`Docs/Input/`）、默认 Pawn / 控制器装配（`Docs/Game/`）、动画与程序化实现（`Animation/`，基础 locomotion 变量与 `ABP_PVP_FP_Locomotion` 见 `Docs/Animation/`；新 ABP 未接线、程序化未实现）、相机模式栈（`Camera/`，预留）、技能与属性（`Docs/GAS/`）。
+不覆盖：输入语义与键位（`Docs/Input/`）、默认 Pawn / 控制器装配（`Docs/Game/`）、动画与程序化实现（`Animation/`，基础 locomotion 变量与 `ABP_PVP_FP_Locomotion` 见 `Docs/Animation/`；新 ABP 已在 `BP_PVPBaseCharacter` 上接线、程序化未实现）、相机模式栈（`Camera/`，预留）、技能与属性（`Docs/GAS/`）。
 
 当前范围只覆盖**第一人称单网格**角色与走 / 跑两档速度。
 
@@ -53,7 +53,7 @@
 | `BP_PVPBaseCharacter` | 继承 `APVPBaseCharacter` 的玩家角色蓝图；CDO 挂 `DA_PVP_InputConfig` | `Content/PVP/Characters/`，由 `compare_tfa_character.py` 创建 / 复用 |
 | `BPI_PVP_AnimationState`、`ABP_PVP_Manny_PostProcess` | 动画状态接口与后处理动画蓝图（角色表现链） | `Content/PVP/Animation/Interfaces/`、`Content/PVP/Animation/AnimBP/` |
 | `SKM_PVP_FP_Manny_Simple`、`ABP_PVP_FP_BaseCharacter` | 构造期 `ConstructorHelpers` 引用的第一人称网格与动画蓝图 | `/Game/PVPDemo/Characters/Mannequins/Meshes/`、`/Game/PVP/Animation/AnimBP/`（工程自有，不依赖第三方包） |
-| `ABP_PVP_FP_Locomotion` | 新 locomotion ABP（父类 `UPVPAnimInstanceBase`，四状态） | `/Game/PVP/Animation/AnimBP/`；尚未挂到角色 |
+| `ABP_PVP_FP_Locomotion` | 新 locomotion ABP（父类 `UPVPAnimInstanceBase`，四状态） | `/Game/PVP/Animation/AnimBP/`；已手动挂到 `BP_PVPBaseCharacter` 的 Mesh AnimClass（C++ 默认未改） |
 
 - 资产数量只看 `Docs/Content-Structure.md`，本文不复制总数。
 - `.uasset` 只能由 UE 编辑器或 `Content/Python/` 脚本产出，禁止手写 / 伪造。
@@ -124,7 +124,7 @@
 
 - **现象**：克隆工程后未导入原包，PIE 能出生、能移动，但看不到手臂与武器，日志中可能出现 `FObjectFinder` 找不到对象的告警。
 - **根因（历史）**：`PVPBaseCharacter.cpp` 构造函数此前通过 `ConstructorHelpers::FObjectFinder` / `FClassFinder` 引用 `/Game/InfimaGames/TacticalFPSAnimations/...` 的 `SKM_FP_Manny_Simple` 与 `ABP_TFA_FP_BaseCharacter`；该包不随仓库分发。
-- **现状**：构造期路径已改为自有 `/Game/PVPDemo/Characters/Mannequins/Meshes/SKM_PVP_FP_Manny_Simple` 与 `/Game/PVP/Animation/AnimBP/ABP_PVP_FP_BaseCharacter`，克隆工程无需导入原包；改动后须重跑对照脚本，并确认 `verify_pvp_asset_layout.py` 的 `source.*` 三项通过。
+- **现状**：构造期路径已改为自有 `/Game/PVPDemo/Characters/Mannequins/Meshes/SKM_PVP_FP_Manny_Simple` 与 `/Game/PVP/Animation/AnimBP/ABP_PVP_FP_BaseCharacter`，克隆工程无需导入原包；改动后须重跑对照脚本，并确认 `verify_pvp_asset_layout.py` 的 `source.*` 三项通过。新 ABP 的接线通过 `BP_PVPBaseCharacter` 的 Mesh AnimClass 覆盖完成，C++ 默认 ABP 保持不变。
 - **验证方式**：`Saved/PVPCharacterDump/parity_report.md` 中组件树与 Mesh / AnimBP 项通过；PIE 中可看到第一人称手臂。
 
 ---
@@ -162,6 +162,7 @@ LogPVPBaseCharacter: BP_PVPBaseCharacter_C_0: bound 6/6 native input bindings (c
 
 ### 6.3 PIE 冒烟清单
 
+- 出生时 `BP_PVPBaseCharacter` 的 Mesh AnimClass 为 `ABP_PVP_FP_Locomotion`，角色姿态由四状态 ABP 驱动（C++ 构造期默认仍是 `ABP_PVP_FP_BaseCharacter`）。
 - 出生后能看到第一人称手臂与武器，视角高度与参考蓝图一致。
 - WASD 四向移动方向随视角；抬头 / 低头时移动平面不倾斜。
 - 鼠标左右转视角、上抬看天、下压看地。
@@ -189,7 +190,8 @@ LogPVPBaseCharacter: BP_PVPBaseCharacter_C_0: bound 6/6 native input bindings (c
 - 资产
   - `Content/PVP/Characters/BP_PVPBaseCharacter`、`BP_PVP_BaseCharacter`
   - `Content/PVP/Animation/Interfaces/BPI_PVP_AnimationState`、`Content/PVP/Animation/AnimBP/ABP_PVP_Manny_PostProcess`
-  - `Content/PVP/Animation/AnimBP/ABP_PVP_FP_BaseCharacter`（构造期默认 AnimClass）
+  - `Content/PVP/Animation/AnimBP/ABP_PVP_FP_BaseCharacter`（构造期默认 AnimClass，未在本次改动）
+  - `Content/PVP/Animation/AnimBP/ABP_PVP_FP_Locomotion`（`BP_PVPBaseCharacter` 覆盖后的 AnimClass）
   - `Content/PVP/Input/DA_PVP_InputConfig`（CDO 挂接）
   - `Content/PVPDemo/Characters/Mannequins/Meshes/SKM_PVP_FP_Manny_Simple`（构造期默认第一人称网格）
 - 工具与报告

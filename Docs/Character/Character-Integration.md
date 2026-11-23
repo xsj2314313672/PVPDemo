@@ -22,7 +22,7 @@
 
 - 不定义输入语义、键位与 IMC（属于 `Input/` 与 `APVPPlayerController`）。
 - 不负责默认 Pawn / 控制器装配与输入模式（属于 `Game/`）。
-- 不实现相机模式栈（`Camera/` 预留）、技能与属性（`GAS/`）；动画实例与新动画蓝图由 `Animation/` 的 `UPVPAnimInstanceBase` / `ABP_PVP_FP_Locomotion` 只读采集本模块状态，但新 ABP 尚未接线（见 `Docs/Animation/`）。
+- 不实现相机模式栈（`Camera/` 预留）、技能与属性（`GAS/`）；动画实例与新动画蓝图由 `Animation/` 的 `UPVPAnimInstanceBase` / `ABP_PVP_FP_Locomotion` 只读采集本模块状态；新 ABP 已在 `BP_PVPBaseCharacter` 上接线，`APVPBaseCharacter` 构造期默认未改（见 `Docs/Animation/`）。
 - 不参与会话规则、对局流程与出生点选择。
 
 ---
@@ -50,7 +50,7 @@
 
 ### 2.3 第三方依赖（已解除）
 
-- 构造期通过 `ConstructorHelpers` 引用的第一人称网格与动画蓝图已改用工程自有资产：`/Game/PVPDemo/Characters/Mannequins/Meshes/SKM_PVP_FP_Manny_Simple` 与 `/Game/PVP/Animation/AnimBP/ABP_PVP_FP_BaseCharacter`。
+- 构造期通过 `ConstructorHelpers` 引用的第一人称网格与动画蓝图已改用工程自有资产：`/Game/PVPDemo/Characters/Mannequins/Meshes/SKM_PVP_FP_Manny_Simple` 与 `/Game/PVP/Animation/AnimBP/ABP_PVP_FP_BaseCharacter`。`BP_PVPBaseCharacter` 的 Mesh AnimClass 已覆盖为 `ABP_PVP_FP_Locomotion`，C++ 构造期默认未改。
 - 影响：克隆工程无需导入 `/Game/InfimaGames` 原包即可获得完整第一人称网格与动画；原包仅作开发期素材参考且不得修改。
 - 回归校验：`Content/Python/verify_pvp_asset_layout.py` 断言源码中不再出现 `/Game/InfimaGames/`，且两处默认路径存在。
 
@@ -122,7 +122,7 @@ L_PVP_Showcase（WorldSettings.GameMode → BP_PVPGameMode）
 | `DA_PVP_InputConfig` | `/Game/PVP/Input/DA_PVP_InputConfig` | `APVPBaseCharacter::InputConfig`（CDO） |
 | `IMC_PVP_Default` | `/Game/PVP/Input/IMC_PVP_Default` | `APVPPlayerController`（间接，由控制器注入） |
 | `BPI_PVP_AnimationState` | `/Game/PVP/Animation/Interfaces/` | 角色表现链（动画状态契约） |
-| `ABP_PVP_FP_Locomotion` | `/Game/PVP/Animation/AnimBP/` | 新建的 locomotion ABP（父类 `UPVPAnimInstanceBase`，四状态），尚未挂到角色 |
+| `ABP_PVP_FP_Locomotion` | `/Game/PVP/Animation/AnimBP/` | 新建的 locomotion ABP（父类 `UPVPAnimInstanceBase`，四状态），已挂到 `BP_PVPBaseCharacter` 的 Mesh AnimClass（C++ 默认未改） |
 | `ABP_PVP_Manny_PostProcess` | `/Game/PVP/Animation/AnimBP/` | 骨骼网格体 `SKM_PVP_Manny` 的 `PostProcessAnimBlueprint` |
 
 **契约**：
@@ -154,7 +154,7 @@ APVPPlayerController.BeginPlay（IMC 注入）
 
 ### 5.3 表现层如何只读
 
-- Animation：当前 `UPVPAnimInstanceBase` 只读 `bIsRunning`、`Velocity`、`RunSpeed` 与移动组件模式；`ABP_PVP_FP_Locomotion` 消费这些变量输出四状态姿态，但尚未挂到角色（见 `Docs/Animation/`）；后续若要手臂 / 武器跟随俯仰，再读 `ControlRotation.Pitch` / `GetBaseAimRotation()` 驱动 AimOffset / 脊柱。
+- Animation：当前 `UPVPAnimInstanceBase` 只读 `bIsRunning`、`Velocity`、`RunSpeed` 与移动组件模式；`ABP_PVP_FP_Locomotion` 消费这些变量输出四状态姿态，并已挂到 `BP_PVPBaseCharacter` 的 Mesh AnimClass 实际生效（见 `Docs/Animation/`）；后续若要手臂 / 武器跟随俯仰，再读 `ControlRotation.Pitch` / `GetBaseAimRotation()` 驱动 AimOffset / 脊柱。
 - Camera（当前为内置 `CameraFP`）：消费 `ControlRotation` 与挂点位置，不写角色状态，不注入 IMC。
 - UI（未实现）：经 `APVPPlayerController::GetPVPCharacter()` 读取，不直接改 `MaxWalkSpeed` / `bIsRunning`。
 
@@ -194,6 +194,7 @@ APVPPlayerController.BeginPlay（IMC 注入）
 | 新增组件（3P / 透视 / 程序化） | 本文第 3 / 4 节、`README.md` 第 3.1 / 5 节、`Docs/Source-Structure.md` 2.1 节 |
 | 输入组件类型或 `OverrideInputComponentClass` | 本文第 2.2 节、`Character-Dev.md` 踩坑 1、`Docs/Input/Input-Integration.md` 第 2.2 节 |
 | 构造期第三方引用改为自有副本 | 本文第 2.3 节、`Character-Dev.md` 踩坑 5、`Docs/Source-Structure.md` 2.1 节 |
+| `BP_PVPBaseCharacter` 的 Mesh AnimClass 覆盖变化 | 本文第 4.2 / 5.3 节、`Character-Dev.md` 第 2.3 / 6.3 节、`Docs/Animation/` 三件套；C++ 构造期默认不变 |
 | 相机迁出到 `Camera/` | 本文第 5.5 / 6 节、`Docs/Source-Structure.md` 2.1 / 2.2 节、`Docs/Input/Input-Integration.md` 第 3 节 |
 
 - 任何一项改动完成后，同时刷新 `Docs/Character/` 三份文档文首的「最后更新」。

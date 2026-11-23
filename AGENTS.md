@@ -9,7 +9,7 @@
 ## 1. 项目速览
 
 - **定位**：Unreal Engine 5 第一人称 PVP 射击玩法 Demo，目标是跑通 FPS 3C（Character / Camera / Control），再逐步接入 GAS、装备与动画系统。
-- **源码**：`Source/PVPDemo/`，运行时模块名 `PVPDemo`，导出宏 `PVPDEMO_API`。已落地 `Character/PVPBaseCharacter.h/.cpp`（基础 1P 角色 + `CameraFP`，已接 Move / Look / Jump / Run 输入与走跑速度切换）、`Input/PVPInputConfig` 与 `Input/PVPInputComponent`（Lyra 式 Tag ↔ InputAction 配置与绑定）、`GAS/PVPGameplayTags`（仅 `InputTag.*`）与 `Game/PVPGameMode`、`Game/PVPPlayerController`（会话与玩家入口，控制器在代码中默认注入 `IMC_PVP_Default`）；`Animation/PVPAnimInstanceBase`（`UAnimInstance` 基类，线程安全采集 Move / Run / Jump 基础 locomotion 变量）与逻辑资产 `ABP_PVP_FP_Locomotion`（四状态 locomotion 图，父类 `UPVPAnimInstanceBase`，尚未接线到角色）；另含编辑器期模块 `Source/PVPDemoEditor/`（资产引用重定向工具 + 动画蓝图构建器，只进编辑器、不进打包）。`Camera/`、`Equipment/` 仍为规划中的空目录。
+- **源码**：`Source/PVPDemo/`，运行时模块名 `PVPDemo`，导出宏 `PVPDEMO_API`。已落地 `Character/PVPBaseCharacter.h/.cpp`（基础 1P 角色 + `CameraFP`，已接 Move / Look / Jump / Run 输入与走跑速度切换）、`Input/PVPInputConfig` 与 `Input/PVPInputComponent`（Lyra 式 Tag ↔ InputAction 配置与绑定）、`GAS/PVPGameplayTags`（仅 `InputTag.*`）与 `Game/PVPGameMode`、`Game/PVPPlayerController`（会话与玩家入口，控制器在代码中默认注入 `IMC_PVP_Default`）；`Animation/PVPAnimInstanceBase`（`UAnimInstance` 基类，线程安全采集 Move / Run / Jump 基础 locomotion 变量）与逻辑资产 `ABP_PVP_FP_Locomotion`（四状态 locomotion 图，父类 `UPVPAnimInstanceBase`，已通过 `BP_PVPBaseCharacter` 的 Mesh AnimClass 覆盖接线；C++ 构造期默认仍是 `ABP_PVP_FP_BaseCharacter`）；另含编辑器期模块 `Source/PVPDemoEditor/`（资产引用重定向工具 + 动画蓝图构建器，只进编辑器、不进打包）。`Camera/`、`Equipment/` 仍为规划中的空目录。
 - **自有资产**：分两根。`Content/PVPDemo/` 只放美术表现资产（Audio / Characters / Common / Environment / Props / UI / VFX / Weapons）；`Content/PVP/` 放逻辑资产（Animation / Actors / Characters / Data / Game / Input / Maps / Types / UI），动画蓝图 / 动画接口 / 动画通知统一在 `Animation/`，枚举与结构体统一在 `Types/`。
 - **第三方原包**：`Content/InfimaGames/TacticalFPSAnimations` 不随仓库分发。工程自有资产已完成引用重定向、不再依赖该包，克隆后无需导入原包即可打开工程并运行自有地图。
 - **构建**：右键 `PVPDemo.uproject` → Generate Visual Studio project files → 编译 `PVPDemoEditor`。
@@ -39,7 +39,7 @@
 | Character | `Docs/Character/` | `README.md` | `Character-Dev.md`、`Character-Integration.md` | 已实现 1P 角色本体（胶囊 / Mesh 对齐参考蓝图、`CameraFP` 挂 `head` 骨骼）、走跑速度切换与原生输入回调；导航内含组件默认值与移动状态权威表；相机模式栈仍预留 |
 | Game | `Docs/Game/` | `README.md` | `Game-Dev.md`、`Game-Integration.md` | 已实现会话与玩家入口（默认 Pawn / 控制器、GameOnly 输入模式、默认 IMC 注入、`GetPVPCharacter`）；导航内含入口装配与启动时序权威表；GameState / PlayerState / 对局流程未实现 |
 | GAS | `Docs/GAS/` | `README.md` | `GAS-Dev.md`、`GAS-Integration.md` | 仅落地原生 `InputTag.Move/Look/Jump/Run`；导航内含 Tag 命名与语义权威表；ASC / AttributeSet / GameplayAbility / AbilitySystemGlobals / 双网格 Montage Task / Cue 均未实现 |
-| Animation | `Docs/Animation/` | `README.md` | `Animation-Dev.md`、`Animation-Integration.md` | 已实现 `UPVPAnimInstanceBase`（游戏线程采样 + 动画线程计算）与 `ABP_PVP_FP_Locomotion`（`Ground` / `JumpStart` / `Falling` / `Land` 四状态，Ground 内 BlendSpace + Run 混合，6 条过渡）；导航内含变量与状态机权威表；新 ABP 尚未接线，Look / 蹲伏 / 瞄准 / 武器 / 程序化动画均未提供 |
+| Animation | `Docs/Animation/` | `README.md` | `Animation-Dev.md`、`Animation-Integration.md` | 已实现 `UPVPAnimInstanceBase`（游戏线程采样 + 动画线程计算）与 `ABP_PVP_FP_Locomotion`（`Ground` / `JumpStart` / `Falling` / `Land` 四状态，Ground 内 BlendSpace + Run 混合，6 条过渡）；导航内含变量与状态机权威表；新 ABP 已在 `BP_PVPBaseCharacter` 上接线（C++ 默认 ABP 未改），视觉复核待做；Look / 蹲伏 / 瞄准 / 武器 / 程序化动画均未提供 |
 
 - 新建功能模块（源码分层或逻辑资产模块由空变实）时必须同步创建该文件夹并补齐三件套；预留模块（`Camera/`、`Camera/Modes/`、`Equipment/`）进入实现前不建空目录。
 - 三件套命名固定；附加文档必须以 `<模块>-` 开头，并在该模块 `README.md` 的文档清单中登记，禁止孤儿文档。

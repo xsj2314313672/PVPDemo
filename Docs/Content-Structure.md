@@ -264,7 +264,7 @@ Content/PVP/                          78   自有逻辑资产根
 | `PVP/Game/` | `Source/PVPDemo/Game/` | 游戏模式与玩家控制器蓝图，继承 `APVPGameMode` / `APVPPlayerController` |
 | `PVP/Maps/` | 关卡 / 玩法 | `L_PVP_Showcase` 的 WorldSettings 指向 `BP_PVPGameMode`，出生点由 `PlayerStart` 提供 |
 | `PVP/Characters/` | `Source/PVPDemo/Character/` | `BP_PVPBaseCharacter` 继承 `APVPBaseCharacter`，是指向 `DefaultPawnClass` 的蓝图，CDO 引用 `DA_PVP_InputConfig`；`BP_PVP_BaseCharacter` 为第三方完整角色逻辑副本，动画蓝图与通知内部引用它，当前未接入 GameMode |
-| `PVP/Animation/` | `Source/PVPDemo/Animation/` | `AnimBP/` 承接迁移后的角色动画蓝图（其中 `ABP_PVP_FP_BaseCharacter` 也是 `APVPBaseCharacter` 的第一人称 AnimClass 默认值）与新建的 `ABP_PVP_FP_Locomotion`（父类 `UPVPAnimInstanceBase`，未接线）；`Interfaces/` 提供动画状态契约，`Notifies/` 被武器蒙太奇与武器蓝图引用 |
+| `PVP/Animation/` | `Source/PVPDemo/Animation/` | `AnimBP/` 承接迁移后的角色动画蓝图（其中 `ABP_PVP_FP_BaseCharacter` 也是 `APVPBaseCharacter` 的第一人称 AnimClass 默认值）与新建的 `ABP_PVP_FP_Locomotion`（父类 `UPVPAnimInstanceBase`，已接到 `BP_PVPBaseCharacter` 的 Mesh AnimClass）；`Interfaces/` 提供动画状态契约，`Notifies/` 被武器蒙太奇与武器蓝图引用 |
 | `PVP/Types/` | `Source/PVPDemo/Character/`、`Game/` | 枚举与结构体承载角色视角 / 开火模式 / 握持方式 / 站姿与弹簧参数语义，供动画蓝图、角色与武器蓝图及 UI 读取 |
 | `PVP/Input/` | `Source/PVPDemo/Input/`、`GAS/PVPGameplayTags` | IA / IMC / `DA_PVP_InputConfig` 提供动作与语义映射，供角色按 Tag 绑定、控制器注入 IMC |
 | `Characters/` | `Source/PVPDemo/Character/`、`Animation/` | 提供角色网格、姿势与动画素材；角色逻辑在源码层实现 |
@@ -274,7 +274,7 @@ Content/PVP/                          78   自有逻辑资产根
 | `UI/` | 后续 UI 层 | 字体资源供界面使用 |
 | `Environment/` `Props/` | 关卡/玩法 | 场景物件与可交互道具的美术资源 |
 
-> 说明：源码目录 `Source/PVPDemo/` 当前已落地 `Character/PVPBaseCharacter.h/.cpp`、`Game/PVPGameMode.h/.cpp`、`Game/PVPPlayerController.h/.cpp`、`Input/PVPInputConfig.h/.cpp`、`Input/PVPInputComponent.h/.cpp`、`GAS/PVPGameplayTags.h/.cpp`（仅输入 Tag）、`Animation/PVPAnimInstanceBase.h/.cpp`（动画实例基类）与 `PVPDemoEditor/PVPAnimBlueprintBuilder.h/.cpp`（动画蓝图构建器）；本轮新增了逻辑资产 `Animation/AnimBP/ABP_PVP_FP_Locomotion`（由 `Content/Python/setup_pvp_anim_blueprint.py` 生成，未接线）；`Camera/`、`Equipment/` 仍为规划中的空目录（见 `Docs/Source-Structure.md`）；编辑器期工具在 `Source/PVPDemoEditor/`。
+> 说明：源码目录 `Source/PVPDemo/` 当前已落地 `Character/PVPBaseCharacter.h/.cpp`、`Game/PVPGameMode.h/.cpp`、`Game/PVPPlayerController.h/.cpp`、`Input/PVPInputConfig.h/.cpp`、`Input/PVPInputComponent.h/.cpp`、`GAS/PVPGameplayTags.h/.cpp`（仅输入 Tag）、`Animation/PVPAnimInstanceBase.h/.cpp`（动画实例基类）与 `PVPDemoEditor/PVPAnimBlueprintBuilder.h/.cpp`（动画蓝图构建器）；逻辑资产 `Animation/AnimBP/ABP_PVP_FP_Locomotion`（由 `Content/Python/setup_pvp_anim_blueprint.py` 生成，已手动接到 `BP_PVPBaseCharacter` 的 Mesh AnimClass；C++ 构造期默认仍是 `ABP_PVP_FP_BaseCharacter`）；`Camera/`、`Equipment/` 仍为规划中的空目录（见 `Docs/Source-Structure.md`）；编辑器期工具在 `Source/PVPDemoEditor/`。
 
 ---
 

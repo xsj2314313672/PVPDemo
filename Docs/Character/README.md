@@ -24,7 +24,7 @@
 
 - 输入语义与键位：`InputTag.*` → `IA_PVP_*` → 绑定事件由 `Input/` 与 `BP_PVPBaseCharacter` CDO 的 `DA_PVP_InputConfig` 承担。
 - 默认映射上下文注入：由 `APVPPlayerController` 负责，见 `Docs/Game/`。
-- 动画实现：AnimInstance、AimOffset、程序化动画属于 `Animation/`；当前已落地 `UPVPAnimInstanceBase` 与 `ABP_PVP_FP_Locomotion` 四状态 locomotion 图，见 `Docs/Animation/README.md`；新 ABP 尚未挂到角色，角色仍使用 `ABP_PVP_FP_BaseCharacter`。
+- 动画实现：AnimInstance、AimOffset、程序化动画属于 `Animation/`；当前已落地 `UPVPAnimInstanceBase` 与 `ABP_PVP_FP_Locomotion` 四状态 locomotion 图，见 `Docs/Animation/README.md`；新 ABP 已在 `BP_PVPBaseCharacter` 的 Mesh AnimClass 上接线，`APVPBaseCharacter` 构造期默认仍是 `ABP_PVP_FP_BaseCharacter`。
 - 相机模式栈：`Camera/`、`Camera/Modes/` 仅为预留目录；当前 1P 视角由本模块内的 `CameraFP` 承担。
 - 技能 / 属性：ASC、AttributeSet、GameplayAbility 属于 `GAS/`（当前仅有原生 Tag），见 `Docs/GAS/`。
 
@@ -68,7 +68,7 @@
 | Actor 旋转跟随 | Yaw 跟随 Controller；Pitch / Roll **不**跟随 | `bUseControllerRotationYaw=true`、Pitch/Roll `false` |
 | `CameraFP` 挂点 | `head` **骨骼**（非 Socket），相对旋转 `(0,90,-90)` | 位置随第一人称动画的头 bob / 蹲伏姿态 |
 | `CameraFP` 参数 | `FieldOfView=100`、`bUsePawnControlRotation=true`、`PostProcessBlendWeight=1.0`、`bAutoActivate=true` | 旋转来自 `ControlRotation`，动画不参与视角旋转 |
-| Mesh / AnimBP | 构造期 `FObjectFinder`：`SKM_PVP_FP_Manny_Simple`、`ABP_PVP_FP_BaseCharacter` | 工程自有路径：`/Game/PVPDemo/Characters/Mannequins/Meshes/`、`/Game/PVP/Animation/AnimBP/`，不依赖第三方包 |
+| Mesh / AnimBP | 构造期 `FObjectFinder`：`SKM_PVP_FP_Manny_Simple`、`ABP_PVP_FP_BaseCharacter`；`BP_PVPBaseCharacter` 的 Mesh AnimClass 已覆盖为 `ABP_PVP_FP_Locomotion` | 工程自有路径：`/Game/PVPDemo/Characters/Mannequins/Meshes/`、`/Game/PVP/Animation/AnimBP/`；C++ 默认未改，实际生效以蓝图 CDO 覆盖为准 |
 | 输入组件类型 | `OverrideInputComponentClass = UPVPInputComponent` | 通过 `APawn` 钩子指定，未改 `DefaultInput.ini` |
 
 ### 3.2 移动与跑步状态
@@ -101,6 +101,7 @@
 | 阶段 | 执行者 | 行为 |
 | --- | --- | --- |
 | 构造函数 | `APVPBaseCharacter` | 设置胶囊 / Mesh 相对变换 / 眼高 / 旋转跟随；`OverrideInputComponentClass = UPVPInputComponent`；初始 `MaxWalkSpeed = WalkSpeed`、`bIsRunning = false`；`FObjectFinder` 装配 Mesh 与 AnimBP；创建 `CameraFP` 并挂 `head` 骨骼 |
+| 蓝图 CDO（手动完成） | `BP_PVPBaseCharacter` | Mesh AnimClass 覆盖为 `ABP_PVP_FP_Locomotion`；`APVPBaseCharacter` 构造期默认 `ABP_PVP_FP_BaseCharacter` 保持不变 |
 | `BeginPlay` | `APVPBaseCharacter` | 重置 `bIsRunning = false`，按**蓝图覆盖后**的 `WalkSpeed` 重写 `MaxWalkSpeed` |
 | Possess 后 | `APVPBaseCharacter::SetupPlayerInputComponent` | 校验输入组件类型与 `InputConfig`，按 Tag 绑定 6 条事件并打印绑定计数 |
 | 运行时 | Animation / Camera | 只读 `bIsRunning`、`ControlRotation`、`CameraFP` 变换，不写角色状态 |
@@ -124,7 +125,7 @@ LogPVPBaseCharacter: <pawn>: running=true max_walk_speed=600.0
 - **移动组件扩展**：`PVPCharacterMovementComponent`（冲刺 / 探头的网络预测）未实现。
 - **网络权威速度**：`MaxWalkSpeed` 仅本地 / 自主代理应用，代码内 `TODO(Network/GAS)` 指向后续复制化或 GAS 属性接管。
 - **技能与属性**：无 ASC / AttributeSet / 血量 / 伤害，属 `GAS/` 后续阶段，见 `Docs/GAS/README.md` 第 5 节。
-- **第三方网格依赖（已解除）**：C++ 构造期已改引用自有 `SKM_PVP_FP_Manny_Simple` 与 `ABP_PVP_FP_BaseCharacter`（`Content/PVP/Animation/AnimBP/`），克隆工程无需导入 `/Game/InfimaGames` 原包；迁移后的 ABP 内部 Cast 目标错位问题见 `Animation-Dev.md` 踩坑 5。
+- **第三方网格依赖（已解除）**：C++ 构造期已改引用自有 `SKM_PVP_FP_Manny_Simple` 与 `ABP_PVP_FP_BaseCharacter`（`Content/PVP/Animation/AnimBP/`），克隆工程无需导入 `/Game/InfimaGames` 原包；迁移后的 ABP 内部 Cast 目标错位问题见 `Animation-Dev.md` 踩坑 5。新 ABP 的接线由 `BP_PVPBaseCharacter` 的 Mesh AnimClass 覆盖完成，不改 C++ 构造期路径。
 
 ---
 
@@ -149,6 +150,7 @@ LogPVPBaseCharacter: <pawn>: running=true max_walk_speed=600.0
 | 组件装配、默认值、相机参数变化（胶囊 / Mesh / 眼高 / FOV / 挂点） | 本文第 3.1 节 + `Character-Dev.md` 第 4 节 SOP + `compare_tfa_character.py` 的校验项 |
 | 走 / 跑速度、`bIsRunning` 语义变化 | 本文第 3.2 节 + `Character-Integration.md` 第 4 / 7 节（Animation / Camera 只读方受影响） |
 | 新增 / 删除 / 重绑动作或回调函数 | `Docs/Input/README.md` 第 3 节（权威表）+ 本文第 3.3 节链接与行为列 + `Docs/Input/Input-Dev.md` 第 4 节 |
+| `BP_PVPBaseCharacter` 的 Mesh AnimClass 覆盖变化 | 本文第 3.1 / 4 节 + `Character-Dev.md` 第 2.3 / 6.3 节 + `Character-Integration.md` 第 4.2 / 5.3 节 + `Docs/Animation/README.md` 第 3.1 节 |
 | 对外接口签名、依赖方向、资产契约变化 | `Character-Integration.md` 第 2 / 4 / 6 / 7 节；本文第 3 节 |
 | 出现新的坑点或校验步骤 | `Character-Dev.md` 第 5 / 6 节（踩坑四要素齐全） |
 | 新增本模块维护文档 | 本文第 2 节文档清单登记，命名 `Character-<主题>.md` |

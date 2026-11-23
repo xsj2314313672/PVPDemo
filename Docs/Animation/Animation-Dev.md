@@ -47,7 +47,7 @@
 - 私有缓存的 `CachedCharacter` / `CachedMovementComponent` 使用 `TObjectPtr` + `Transient`，参与 GC 追踪但不序列化、不进入蓝图。
 - 编译结果：`PVPDemoEditor Win64 Development` 通过（UHT 反射代码正常生成）。
 
-**当前状态**：`ABP_PVP_FP_Locomotion` 已由 `setup_pvp_anim_blueprint.py` 生成并编译通过，四状态与 6 条过渡已读回；但**尚未接线**：`APVPBaseCharacter` 构造函数默认 AnimClass 仍是 `ABP_PVP_FP_BaseCharacter`（`/Game/PVP/Animation/AnimBP/`），`BP_PVPBaseCharacter` 继承该默认值。注意该默认 ABP 是迁移资产，其内部 Cast 目标为 `BP_PVP_BaseCharacter`（见第 5 节踩坑 5），与本次新建的 ABP 无关。
+**当前状态**：`ABP_PVP_FP_Locomotion` 已由 `setup_pvp_anim_blueprint.py` 生成并编译通过，四状态与 6 条过渡已读回；用户已在编辑器中手动完成接线：`BP_PVPBaseCharacter` 的 Mesh AnimClass 切到 `ABP_PVP_FP_Locomotion`。`APVPBaseCharacter` 构造函数默认 AnimClass 仍是 `ABP_PVP_FP_BaseCharacter`（`/Game/PVP/Animation/AnimBP/`），C++ 未改，蓝图实例覆盖后新 ABP 实际生效；视觉 / PIE 复核待做。注意该默认 ABP 是迁移资产，其内部 Cast 目标为 `BP_PVP_BaseCharacter`（见第 5 节踩坑 5），与本次新建的 ABP 无关。
 
 ---
 
@@ -62,7 +62,7 @@
 | `Direction` 复用 `UKismetAnimationLibrary::CalculateDirection` | 与引擎方向混合空间的 -180～180 度约定一致，避免自写角度换算引入左右反向问题 |
 | 空中状态拆成 `bIsInAir` / `bIsJumping` / `bIsFalling` | 状态机通常需要区分上升与下降；`bIsInAir` 保留原始移动模式语义，`bIsJumping` / `bIsFalling` 由垂直速度细分且互斥 |
 | 不提供 Look 变量 | 当前 1P 视角由 Controller 的 `ControlRotation` 驱动，动画不参与视角旋转；过早引入 AimPitch 会与相机方案耦合 |
-| 不修改角色与现有动画蓝图 | 本轮只新增 `ABP_PVP_FP_Locomotion`，避免在未完成视觉确认前切换 AnimClass 导致角色进入参考姿势 |
+| 在角色蓝图覆盖 AnimClass，不改 C++ 构造期默认 | 新增 `ABP_PVP_FP_Locomotion` 后在 `BP_PVPBaseCharacter` 上手动切换 Mesh AnimClass 完成接线；C++ 默认仍是 `ABP_PVP_FP_BaseCharacter`，避免改构造函数影响所有派生类；视觉确认仍需在 PIE / Persona 完成 |
 | 编辑器 C++ 构建器 + Python commandlet | `UEdGraph::AddNode` / `CreateNode` 未反射，`ue5-automation` bridge 对 AnimBP 只读；只能在编辑器 C++ 中搭图，由 Python 负责资产生命周期 |
 | Ground 内用 BlendListByBool 叠加 Run | `BS_PVP_FP_AR_Locomotion_Standing` 只有 Idle / Walk 样本，没有 Run 样本；单独用 Speed 驱动会把跑步播成走路 |
 | BlendSpace 的 Horizontal / Vertical 用 sin/cos 驱动 | 该混合空间是方向平面（样本点 -100/0/100），不是 Speed/Direction 轴；用 `sin(Direction)*100` / `cos(Direction)*100` 才能命中 F/B/L/R 样本 |
@@ -102,7 +102,7 @@
    ```
 3. 脚本阶段：校验骨骼 / 网格 / BlendSpace / 序列 → 删除旧目标资产（`delete_asset` + 清理 `.uasset` 文件）→ 调用 `UPVPAnimBlueprintBuilder.BuildLocomotionAnimBlueprint` → `compile_blueprint` → 保存 → 读回父类 / 骨骼 / AnimGraph / 四状态 / 6 条过渡 → 写报告。
 4. 运行 `python Content/Python/verify_pvp_asset_layout.py`，确认 `Animation/AnimBP` 数量 4、总数 78、旧路径零残留。
-5. 打开 `/Game/PVP/Animation/AnimBP/ABP_PVP_FP_Locomotion` 的 Persona 预览，确认 Idle / Walk / Run / Jump 姿态；需要实际生效时再把 `BP_PVPBaseCharacter` 的 Mesh Anim Class 指向它（本轮未做）。
+5. 打开 `/Game/PVP/Animation/AnimBP/ABP_PVP_FP_Locomotion` 的 Persona 预览，确认 Idle / Walk / Run / Jump 姿态；接线已由用户在编辑器中完成：`BP_PVPBaseCharacter` 的 Mesh Anim Class 已指向它；重跑生成脚本后需确认该覆盖仍在。
 
 **手动兜底**（构建器不可用时）：新建 Animation Blueprint → 父类 `PVPAnimInstanceBase` → 按 README 第 3.4 节搭四状态与过渡。注意 Ground 的 BlendSpace 轴是 `Horizontal` / `Vertical`，必须按 `sin/cos + bIsMoving` 驱动，不能直接接 `Speed` / `Direction`。
 
@@ -137,14 +137,14 @@
 | 正确做法 | 以角色固定的 `RunSpeed` 为分母并 `Clamp(0,1)`；`MaxSpeed` 仍输出当前 `MaxWalkSpeed` 供调试或其他逻辑使用 |
 | 验证方式 | PIE 走路时 `SpeedRatio≈0.5`（速度接近 300），按住 Shift 奔跑时 `SpeedRatio≈1.0`，松开 Shift 回落 |
 
-### 踩坑 4：动画蓝图父类或角色 AnimClass 未切换
+### 踩坑 4：动画蓝图父类不对或角色蓝图未覆盖 AnimClass
 
 | 要素 | 内容 |
 | --- | --- |
-| 现象 | 动画蓝图里看不到本类变量，或 PIE 中变量始终为默认值 / 角色停在参考姿势 |
-| 根因 | 新动画蓝图沿用了默认父类 `AnimInstance`；或 `BP_PVPBaseCharacter` 的 Mesh Anim Class 仍指向迁移资产 `ABP_PVP_FP_BaseCharacter`（`APVPBaseCharacter` 构造函数默认值同为该资产，位于 `/Game/PVP/Animation/AnimBP/`） |
-| 正确做法 | 动画蓝图 Class Settings 的 Parent Class 改为 `PVPAnimInstanceBase`；需要生效时在 `BP_PVPBaseCharacter` 的 Mesh 组件上把 Anim Class 指向新动画蓝图 |
-| 验证方式 | 打开动画蓝图能看到 `Speed` / `bIsMoving` 等变量；PIE 移动时数值变化；日志中无 `expected APVPBaseCharacter` 警告 |
+| 现象 | 动画蓝图里看不到本类变量，或 PIE 中变量始终为默认值 / 角色停在参考姿势；当前 `BP_PVPBaseCharacter` 已接线，但重跑生成脚本或重置蓝图 CDO 可能丢失覆盖 |
+| 根因 | 新动画蓝图沿用默认父类 `AnimInstance`；或 `BP_PVPBaseCharacter` 的 Mesh Anim Class 未指向 `ABP_PVP_FP_Locomotion`，只剩 C++ 构造期默认 `ABP_PVP_FP_BaseCharacter`（`/Game/PVP/Animation/AnimBP/`）。两者层级不同：C++ 默认作用于所有派生类，BP CDO 覆盖只作用于该角色蓝图 |
+| 正确做法 | 动画蓝图 Class Settings 的 Parent Class 设为 `PVPAnimInstanceBase`；在 `BP_PVPBaseCharacter` 的 Mesh 组件上确认 Anim Class 为 `ABP_PVP_FP_Locomotion`，不要改 `PVPBaseCharacter.cpp` 的构造期路径 |
+| 验证方式 | 打开动画蓝图能看到 `Speed` / `bIsMoving` 等变量；检查 `BP_PVPBaseCharacter` 的 Mesh Anim Class 指向新 ABP；PIE 移动时数值变化，日志中无 `expected APVPBaseCharacter` 警告 |
 
 ### 踩坑 5：迁移动画蓝图内部 Cast 目标与实际 Pawn 不一致
 
@@ -225,6 +225,7 @@ python Content/Python/verify_pvp_asset_layout.py
 
 | 操作 | 预期 |
 | --- | --- |
+| 进入 `L_PVP_Showcase` 出生 | `BP_PVPBaseCharacter` 的 Mesh Anim Class 为 `ABP_PVP_FP_Locomotion`，新 ABP 实际生效 |
 | 站立不动 | BlendSpace 输入 `(0,0)`，播 Idle；`Speed≈0`、`bIsMoving=false`、`bIsOnGround=true` |
 | W / A / S / D | BlendSpace 输入分别接近 `(0,100)` / `(-100,0)` / `(0,-100)` / `(100,0)`，播对应 Walk 样本 |
 | 按住 Shift + W | `bIsRunning=true AND bIsMoving=true`，BlendList 切到 `A_PVP_FP_AR_Run_F_Loop` |
@@ -232,13 +233,13 @@ python Content/Python/verify_pvp_asset_layout.py
 | 按 Space | `Ground → JumpStart`（`bIsJumping`）→ `Falling`（`bIsFalling`）→ `Land`（`bIsOnGround`）→ 自动回 `Ground` |
 | 从高处下落 | `Ground → Falling`（`bIsFalling`）→ `Land`（`bIsOnGround`）→ 自动回 `Ground` |
 
-**注意**：本轮未把新 ABP 挂到 `BP_PVPBaseCharacter`，PIE 冒烟需先手动接线，或在 Persona 预览中检查姿态；结构 / 编译校验已由生成脚本覆盖。
+**注意**：新 ABP 已挂到 `BP_PVPBaseCharacter`，可直接按上表做 PIE 冒烟；结构 / 编译校验已由生成脚本覆盖，视觉结果仍需人工确认。
 
 ---
 
 ## 7. 已知限制与后续路线
 
-- **未接线**：`ABP_PVP_FP_Locomotion` 已创建并编译，但角色仍使用 `ABP_PVP_FP_BaseCharacter`；需要手动改 `BP_PVPBaseCharacter` 的 Mesh AnimClass 才会生效。
+- **已接线，待视觉复核**：`ABP_PVP_FP_Locomotion` 已创建、编译并手动挂到 `BP_PVPBaseCharacter` 的 Mesh AnimClass；C++ 构造期默认仍是 `ABP_PVP_FP_BaseCharacter`。PIE / Persona 视觉确认尚未记录，生成脚本重跑后需要复查蓝图覆盖是否保留。
 - **Ground 为方向平面**：当前 BlendSpace 只覆盖 Idle / Walk；Run 由独立序列混合。若后续有速度分层需求，应新建带 Speed 轴的混合空间或增加速度混合，而不是把 `Speed` 直接接到现有轴。
 - **单实例**：当前只有一个基类，1P 手臂 / 3P 全身未拆分；后续按规划派生 `UPVPArmsAnimInstance` / `UPVPBodyAnimInstance`。
 - **无 Look / AimOffset 变量**：视角旋转不参与动画；瞄准、蹲伏、持枪等动作未实现，无对应变量。
