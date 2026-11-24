@@ -3,7 +3,7 @@
 > 维度：技能层（GameplayTag 原生声明；GAS 基础设施未搭建）
 > 模块：GAS
 > 适用工程：PVPDemo（UE 5.9）
-> 最后更新：2026-11-23
+> 最后更新：2026-11-24
 > 上游规范：`AGENTS.md`、`Docs/AI-Workflow.md`、`Docs/Source-Structure.md`、`Docs/Content-Structure.md`
 > 配套文档：`Docs/GAS/README.md`（导航与 Tag 速查）、`Docs/GAS/GAS-Integration.md`（依赖与接口契约）
 
@@ -22,7 +22,7 @@
 
 不覆盖：输入动作与键位（`Docs/Input/`）、角色状态实现（`Docs/Character/`）、相机与动画表现（预留模块）。
 
-当前范围只覆盖 `InputTag.Move/Look/Jump/Run` 四个原生 Tag，没有技能逻辑。
+当前范围只覆盖 `InputTag.Move/Look/Jump/Run/Aim/Fire` 六个原生 Tag，没有技能逻辑。
 
 ---
 
@@ -57,7 +57,7 @@
 3. **声明与定义分离，符号名与 Tag 字符串一一对应**。`InputTag_Move` ↔ `"InputTag.Move"`，`UE_DEFINE_GAMEPLAY_TAG` 同时承担注册与定义，缺一即链接失败。
 4. **Tag 只表达语义，不表达按键或资产**。键位在 IMC，动作在 IA，Tag 只做语义标签；因此换键、换 IA 都不需要改本模块。
 5. **命名族按用途划分**。输入用 `InputTag.*`，状态计划用 `State.*`，表现计划用 `GameplayCue.*`，技能输入计划用 `InputTag.Ability.<Skill>`；不混族、不复用原生动作 Tag 承载技能。
-6. **槽位由 C++ 预置而非脚本构造**。GameplayTag 无法从 Python 构造，`UPVPInputConfig` 构造函数按 Move / Look / Jump / Run 顺序建立槽位，脚本只按索引填 IA；因此 C++ 顺序与脚本 `REQUIRED_ACTIONS` 是硬约定（见踩坑 4）。
+6. **槽位由 C++ 预置而非脚本构造**。GameplayTag 无法从 Python 构造，`UPVPInputConfig` 构造函数 / `EnsureNativeInputActionSlots` 按 Move / Look / Jump / Run / Aim / Fire 顺序建立槽位，脚本只按索引填 IA；因此 C++ 顺序与脚本 `REQUIRED_ACTIONS` 是硬约定（见踩坑 4）。
 7. **GAS 基础设施不提前落地**。`Build.cs` 已声明 `GameplayAbilities` / `GameplayTasks`，但依赖声明不等于能力存在；ASC 宿主（规划为 `PlayerState`）、Globals 与双网格 Montage 需要角色 / 动画阶段稳定后再引入。
 
 ---
@@ -91,10 +91,10 @@
 
 ### 5.2 Tag 字符串与 C++ 符号不对应，绑定少一条
 
-- **现象**：编译通过，但 PIE 日志 `bound 5/6`（或其他 N/6），对应动作无响应，且没有明显报错。
+- **现象**：编译通过，但 PIE 日志 `bound 8/9`（或其他 N/9），对应动作无响应，且没有明显报错。
 - **根因**：`UPVPInputConfig` 按 Tag 相等匹配 IA。若 `UE_DEFINE_GAMEPLAY_TAG` 的字符串与 `PVPInputConfig` 槽位里的语义不一致（例如把 `InputTag.Jump` 写成 `InputTag.Jumping`），`FindNativeInputActionForTag` 返回 `nullptr`，`BindNativeAction` 返回空，绑定被跳过。
 - **正确做法**：符号名与字符串严格一一对应（`InputTag_Move` ↔ `InputTag.Move`）；改名时同步检查 `UPVPInputConfig.cpp`、`APVPBaseCharacter::SetupPlayerInputComponent` 与 `setup_pvp_input.py`。
-- **验证方式**：日志恢复 `bound 6/6`；`Saved/PVPInputReport/report.md` 中 4 个槽位均能解析 IA。
+- **验证方式**：日志恢复 `bound 9/9`；`Saved/PVPInputReport/report.md` 中 6 个槽位均能解析 IA。
 
 ### 5.3 运行时用字符串拼 Tag，查不到或注册失败
 
@@ -105,7 +105,7 @@
 
 ### 5.4 新增输入 Tag 后槽位 / 脚本 / 期望数量未同步
 
-- **现象**：新增第 5 个输入动作后，`DA_PVP_InputConfig` 里该槽位的 IA 为空或错位（按空格触发跑步之类），日志 `bound N/6` 的期望值仍是 6，或新动作完全不响应。
+- **现象**：新增第 7 个输入动作后，`DA_PVP_InputConfig` 里该槽位的 IA 为空或错位（按空格触发跑步之类），日志 `bound N/9` 的期望值仍是 9，或新动作完全不响应。
 - **根因**：输入 Tag 的实际映射依赖三处同步——`UPVPInputConfig` 构造函数的预置槽位顺序、`setup_pvp_input.py` 的 `REQUIRED_ACTIONS` 顺序、`SetupPlayerInputComponent` 的绑定与 `ExpectedBindings`。只加 Tag 不改这三处，脚本按旧索引写入，绑定也查不到。
 - **正确做法**：新增 `InputTag.*` 时按"Tag 声明 → 定义 → C++ 槽位 → 脚本 `REQUIRED_ACTIONS` → 角色绑定 + `ExpectedBindings` → 重跑脚本重建 DA"的顺序改；顺序必须逐项一致。
 - **验证方式**：重跑 `setup_pvp_input.py` 后报告槽位与动作一一对应；PIE 中每个动作行为正确；日志绑定数与期望值一致。
@@ -122,7 +122,7 @@
 ```
 
 - 编译无 `unresolved external symbol`，说明声明 / 定义成对。
-- Gameplay Tag 列表中可见 `InputTag.Move`、`InputTag.Look`、`InputTag.Jump`、`InputTag.Run`，且无多余 `InputTag.*`（避免预造未使用 Tag）。
+- Gameplay Tag 列表中可见 `InputTag.Move`、`InputTag.Look`、`InputTag.Jump`、`InputTag.Run`、`InputTag.Aim`、`InputTag.Fire`，且无多余 `InputTag.*`（避免预造未使用 Tag）。
 
 ### 6.2 间接校验（输入链路）
 
@@ -132,12 +132,12 @@ UnrealEditor-Cmd.exe "<project>.uproject" -run=PythonScript \
 ```
 
 - 该脚本不直接读 C++ Tag 符号，但按槽位写入 IA；槽位顺序依赖 `UPVPInputConfig` 构造函数中的 Tag 预置顺序。
-- 报告 `Saved/PVPInputReport/report.md`：4 个动作的 ValueType 与键位、`IA_PVP_Look Negate(Y): yes`、`Errors` 为空。
+- 报告 `Saved/PVPInputReport/report.md`：6 个动作的 ValueType 与键位、`IA_PVP_Look Negate(Y): yes`、`Errors` 为空。
 
 ### 6.3 运行时冒烟
 
-- 进入 `L_PVP_Showcase`，日志 `bound 6/6 native input bindings (config=DA_PVP_InputConfig)`。
-- 4 个动作行为与 `Docs/Input/README.md` 第 3 节一致（移动 / 视角 / 跳跃 / 跑步）。
+- 进入 `L_PVP_Showcase`，日志 `bound 9/9 native input bindings (config=DA_PVP_InputConfig)`。
+- 6 个动作行为与 `Docs/Input/README.md` 第 3 节一致（移动 / 视角 / 跳跃 / 跑步 / 瞄准 / 射击）。
 - 若新增 Tag 但未接消费方：编辑器中可见 Tag，日志绑定数不变——这属于"定义了未使用"，应在评审时拒绝。
 
 ---

@@ -3,6 +3,7 @@
 #include "PVPDemo/Character/PVPBaseCharacter.h"
 
 #include "PVPDemo/Equipment/PVPEquipmentComponent.h"
+#include "PVPDemo/Equipment/PVPWeaponActor.h"
 #include "PVPDemo/GAS/PVPGameplayTags.h"
 #include "PVPDemo/Input/PVPInputComponent.h"
 #include "PVPDemo/Input/PVPInputConfig.h"
@@ -44,6 +45,10 @@ APVPBaseCharacter::APVPBaseCharacter()
 	using namespace PVPBaseCharacterDefaults;
 
 	GetCapsuleComponent()->InitCapsuleSize(CapsuleRadius, CapsuleHalfHeight);
+
+	// Tick only runs while the aim field of view is transitioning (see Tick / SetAiming).
+	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = false;
 
 	// The actor yaw follows the controller so movement stays aligned with the view. Pitch and roll
 	// are intentionally NOT applied to the actor: the first person camera consumes the controller
@@ -111,9 +116,49 @@ void APVPBaseCharacter::BeginPlay()
 	// Blueprint subclasses may override WalkSpeed/RunSpeed, so resolve the movement speed after the
 	// class defaults have been applied instead of relying on the constructor value alone.
 	bIsRunning = false;
-	if (UCharacterMovementComponent* MovementComponent = GetCharacterMovement())
+	bIsAiming = false;
+	ApplyMovementSpeed();
+
+	// A blueprint may override CameraFP's field of view; use that as the hip fire target instead of
+	// the constructor constant so the aim transition always converges back to the authored value.
+	if (CameraFP)
 	{
-		MovementComponent->MaxWalkSpeed = WalkSpeed;
+		DefaultFieldOfView = CameraFP->FieldOfView;
+	}
+}
+
+void APVPBaseCharacter::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+
+	// A weapon can be dropped / unequipped while aiming; leave the state instead of keeping the
+	// zoomed field of view with no weapon.
+	if (bIsAiming && !HasEquippedWeapon())
+	{
+		SetAiming(false);
+	}
+
+	if (!CameraFP)
+	{
+		SetActorTickEnabled(false);
+		return;
+	}
+
+	const float TargetFieldOfView = bIsAiming ? AimFieldOfView : DefaultFieldOfView;
+	if (!FMath::IsNearlyEqual(CameraFP->FieldOfView, TargetFieldOfView, 0.01f))
+	{
+		CameraFP->SetFieldOfView(FMath::FInterpTo(
+			CameraFP->FieldOfView, TargetFieldOfView, DeltaSeconds, AimInterpolationSpeed));
+		return;
+	}
+
+	// While aiming, keep ticking so a weapon dropped / unequipped outside the input flow still exits
+	// the stance. Once aim is released and the FOV has converged, SetAiming is the only entry point
+	// again and the tick is no longer needed. No SetFieldOfView call while the value is stable.
+	if (!bIsAiming)
+	{
+		CameraFP->SetFieldOfView(TargetFieldOfView);
+		SetActorTickEnabled(false);
 	}
 }
 
@@ -138,7 +183,7 @@ void APVPBaseCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 	}
 
 	int32 BoundBindings = 0;
-	const int32 ExpectedBindings = 6;
+	const int32 ExpectedBindings = 9;
 
 	if (PVPInputComponent->BindNativeAction(InputConfig, PVPGameplayTags::InputTag_Move, ETriggerEvent::Triggered, this, &ThisClass::Input_Move))
 	{
@@ -161,6 +206,18 @@ void APVPBaseCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 		++BoundBindings;
 	}
 	if (PVPInputComponent->BindNativeAction(InputConfig, PVPGameplayTags::InputTag_Run, ETriggerEvent::Completed, this, &ThisClass::Input_RunCompleted))
+	{
+		++BoundBindings;
+	}
+	if (PVPInputComponent->BindNativeAction(InputConfig, PVPGameplayTags::InputTag_Aim, ETriggerEvent::Started, this, &ThisClass::Input_AimStarted))
+	{
+		++BoundBindings;
+	}
+	if (PVPInputComponent->BindNativeAction(InputConfig, PVPGameplayTags::InputTag_Aim, ETriggerEvent::Completed, this, &ThisClass::Input_AimCompleted))
+	{
+		++BoundBindings;
+	}
+	if (PVPInputComponent->BindNativeAction(InputConfig, PVPGameplayTags::InputTag_Fire, ETriggerEvent::Started, this, &ThisClass::Input_FireStarted))
 	{
 		++BoundBindings;
 	}
@@ -218,6 +275,40 @@ void APVPBaseCharacter::Input_RunCompleted(const FInputActionValue& /*Value*/)
 	SetRunning(false);
 }
 
+void APVPBaseCharacter::Input_AimStarted(const FInputActionValue& /*Value*/)
+{
+	SetAiming(true);
+}
+
+void APVPBaseCharacter::Input_AimCompleted(const FInputActionValue& /*Value*/)
+{
+	SetAiming(false);
+}
+
+void APVPBaseCharacter::Input_FireStarted(const FInputActionValue& /*Value*/)
+{
+	if (!EquipmentComponent)
+	{
+		return;
+	}
+
+	APVPWeaponActor* Weapon = EquipmentComponent->GetCurrentWeapon();
+	if (!Weapon || !Weapon->IsEquipped())
+	{
+		return;
+	}
+
+	// The weapon owns the paired character / weapon montage; the character only picks the variant.
+	if (bIsAiming)
+	{
+		Weapon->PlayAimedFireMontage();
+	}
+	else
+	{
+		Weapon->PlayFireMontage();
+	}
+}
+
 void APVPBaseCharacter::SetRunning(bool bNewRunning)
 {
 	if (bIsRunning == bNewRunning)
@@ -230,12 +321,47 @@ void APVPBaseCharacter::SetRunning(bool bNewRunning)
 	// TODO(Network/GAS): the running speed is applied locally (autonomous proxy / standalone) only.
 	// Move it to a replicated movement state, the planned PVPCharacterMovementComponent, or a GAS
 	// speed attribute when the ability system lands, so the server validates the same speed.
-	if (UCharacterMovementComponent* MovementComponent = GetCharacterMovement())
-	{
-		MovementComponent->MaxWalkSpeed = bIsRunning ? RunSpeed : WalkSpeed;
-	}
+	ApplyMovementSpeed();
 
 	UE_LOG(LogPVPBaseCharacter, Verbose, TEXT("%s: running=%s max_walk_speed=%.1f"),
 		*GetName(), bIsRunning ? TEXT("true") : TEXT("false"),
 		GetCharacterMovement() ? GetCharacterMovement()->MaxWalkSpeed : 0.0f);
+}
+
+void APVPBaseCharacter::SetAiming(bool bNewAiming)
+{
+	// Aiming is a weapon stance: entering requires a held weapon, leaving always succeeds.
+	const bool bCanAim = bNewAiming && HasEquippedWeapon();
+	if (bIsAiming == bCanAim)
+	{
+		return;
+	}
+
+	bIsAiming = bCanAim;
+	ApplyMovementSpeed();
+
+	// Drive the camera FOV toward the new target; Tick disables itself once it converges.
+	SetActorTickEnabled(true);
+
+	UE_LOG(LogPVPBaseCharacter, Verbose, TEXT("%s: aiming=%s max_walk_speed=%.1f"),
+		*GetName(), bIsAiming ? TEXT("true") : TEXT("false"),
+		GetCharacterMovement() ? GetCharacterMovement()->MaxWalkSpeed : 0.0f);
+}
+
+void APVPBaseCharacter::ApplyMovementSpeed()
+{
+	// The aimed locomotion set only has walking samples, so aim overrides a held Run instead of
+	// clearing bIsRunning: releasing aim restores the run speed while Shift is still held.
+	if (UCharacterMovementComponent* MovementComponent = GetCharacterMovement())
+	{
+		MovementComponent->MaxWalkSpeed = (bIsRunning && !bIsAiming) ? RunSpeed : WalkSpeed;
+	}
+}
+
+bool APVPBaseCharacter::HasEquippedWeapon() const
+{
+	// Also verify the weapon still reports itself as equipped: a direct DropWeapon / Unequip call
+	// does not notify the equipment component, and a stale pointer must not keep the aim stance.
+	const APVPWeaponActor* Weapon = EquipmentComponent ? EquipmentComponent->GetCurrentWeapon() : nullptr;
+	return Weapon != nullptr && Weapon->IsEquipped();
 }

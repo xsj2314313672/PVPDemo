@@ -5,11 +5,12 @@ Run headless (editor closed, PVPDemo module compiled):
         -Script="<project>/Content/Python/setup_pvp_input.py" -unattended -nosplash -nullrhi
 
 Phases (idempotent, safe to re-run):
-  1. validate the four required IA assets (Move/Look = Axis2D, Jump/Run = Boolean), fixing the
-     value type of the project-local copy when it does not match the Lyra convention
+  1. validate the six required IA assets (Move/Look = Axis2D, Jump/Run/Aim/Fire = Boolean), fixing
+     the value type of the project-local copy when it does not match the Lyra convention
   2. dump IMC_PVP_Default, assert every required action has a key mapping, and require the
      Negate(Y) modifier on IA_PVP_Look (vertical look polarity)
-  3. create / update /Game/PVP/Input/DA_PVP_InputConfig (InputTag.* -> InputAction)
+  3. create / update /Game/PVP/Input/DA_PVP_InputConfig (InputTag.* -> InputAction), migrating an
+     asset saved before Aim / Fire existed by appending the missing tag slots
   4. assign the config to the BP_PVPBaseCharacter class defaults
   5. write Saved/PVPInputReport/report.json|md and fail loudly when a check did not pass
 
@@ -35,18 +36,21 @@ REPORT_DIR = os.path.join(unreal.Paths.project_saved_dir().replace('\\', '/'), '
 REPORT_JSON = os.path.join(REPORT_DIR, 'report.json')
 REPORT_MD = os.path.join(REPORT_DIR, 'report.md')
 
-# The four actions bound by APVPBaseCharacter::SetupPlayerInputComponent.
+# The six actions bound by APVPBaseCharacter::SetupPlayerInputComponent. The order must match the
+# tag slots seeded by UPVPInputConfig's constructor / EnsureNativeInputActionSlots.
 REQUIRED_ACTIONS = [
     {'tag': 'InputTag.Move', 'asset': 'IA_PVP_Move', 'value_type': 'AXIS2D'},
     {'tag': 'InputTag.Look', 'asset': 'IA_PVP_Look', 'value_type': 'AXIS2D'},
     {'tag': 'InputTag.Jump', 'asset': 'IA_PVP_Jump', 'value_type': 'BOOLEAN'},
     {'tag': 'InputTag.Run', 'asset': 'IA_PVP_Run', 'value_type': 'BOOLEAN'},
+    {'tag': 'InputTag.Aim', 'asset': 'IA_PVP_ADS', 'value_type': 'BOOLEAN'},
+    {'tag': 'InputTag.Fire', 'asset': 'IA_PVP_Fire', 'value_type': 'BOOLEAN'},
 ]
 
 state = {
     'mapping_context': {'path': MAPPING_CONTEXT, 'action_keys': {}, 'mapping_count': 0, 'look_y_negate': None},
     'actions': [],
-    'input_config': {'path': INPUT_CONFIG, 'created': False, 'entries': []},
+    'input_config': {'path': INPUT_CONFIG, 'created': False, 'migrated_slots': 0, 'entries': []},
     'character_blueprint': {'path': CHARACTER_BP, 'input_config': None},
     'fixed_assets': [],
     'errors': [],
@@ -239,12 +243,18 @@ def ensure_input_config():
     else:
         log('reusing %s' % INPUT_CONFIG)
 
-    # The C++ constructor seeds one slot per native tag (Move / Look / Jump / Run). Gameplay tags
-    # cannot be constructed from script, so only the concrete InputAction is filled in here.
+    # Assets saved before the Aim / Fire milestone serialize only four tag slots and never re-run
+    # the C++ constructor, so append the missing slots instead of deleting the data asset that
+    # BP_PVPBaseCharacter already references. Gameplay tags cannot be built from script.
+    migrated_slots = input_config.ensure_native_input_action_slots()
+    state['input_config']['migrated_slots'] = int(migrated_slots)
+    if migrated_slots:
+        log('migrated %s: appended %d native input action slot(s)' % (INPUT_CONFIG, migrated_slots))
+
     entries = input_config.get_editor_property('native_input_actions')
     if len(entries) != len(REQUIRED_ACTIONS):
-        error('%s has %d native input action slots, expected %d; recreate the asset so the C++ '
-              'constructor seeds the four tag slots again'
+        error('%s has %d native input action slots, expected %d; the C++ migration helper '
+              'EnsureNativeInputActionSlots must run before the actions can be filled in'
               % (INPUT_CONFIG, len(entries), len(REQUIRED_ACTIONS)))
         return input_config
 
@@ -326,6 +336,7 @@ def write_report():
             'yes' if state['mapping_context']['look_y_negate'] else 'no'),
         '- input config: `%s` (%s)' % (
             INPUT_CONFIG, 'created' if state['input_config']['created'] else 'reused'),
+        '- native tag slots migrated: `%d`' % state['input_config']['migrated_slots'],
         '- character blueprint: `%s`' % CHARACTER_BP,
         '- class default input_config: `%s`' % (state['character_blueprint']['input_config'] or 'None'),
         '',

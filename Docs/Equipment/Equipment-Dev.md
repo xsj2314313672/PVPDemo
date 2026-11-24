@@ -19,7 +19,7 @@
 - `Source/PVPDemoEditor/PVPAnimBlueprintBuilder` 的武器 ABP 构建与原地 Slot 插入
 - `Content/Python/setup_pvp_weapon.py` 与相关布局 / 框架校验脚本
 
-不覆盖开火伤害、弹药、换弹状态机、3P 角色、网络复制与 GAS 技能（见第 7 节）。
+本轮补充了瞄准 / 射击动画的武器侧接口（`AimedFireMontage` / `PlayAimedFireMontage`）与 `AM_PVP_FP_AR_Fire_Aimed` 生成；不覆盖开火伤害、弹药、射速、换弹状态机、3P 角色、网络复制与 GAS 技能（见第 7 节）。
 
 ---
 
@@ -29,7 +29,7 @@
 
 | 文件 | 职责 |
 | --- | --- |
-| `Equipment/PVPWeaponActor.h/.cpp` | `APVPWeaponActor`：`SceneRoot` + `Mesh1P` / `Mesh3P` + `PickupSphere`；Actor 级配置在 `OnConstruction` 应用；自动拾取、附着 / 卸下 / 丢弃、成对 Montage、枪口查询、1P/3P 切换；扫描 `PVP.Attachment.<Slot>` 标签建配件槽位表，提供查询 / 显隐 / 换网格 / 应用预设 |
+| `Equipment/PVPWeaponActor.h/.cpp` | `APVPWeaponActor`：`SceneRoot` + `Mesh1P` / `Mesh3P` + `PickupSphere`；Actor 级配置在 `OnConstruction` 应用；自动拾取、附着 / 卸下 / 丢弃、成对 Montage（Equip / Fire / AimedFire / Reload）、枪口查询、1P/3P 切换；扫描 `PVP.Attachment.<Slot>` 标签建配件槽位表，提供查询 / 显隐 / 换网格 / 应用预设 |
 | `Equipment/PVPEquipmentComponent.h/.cpp` | `UPVPEquipmentComponent`：`CurrentWeapon`、"一次一把"、`EquipWeapon` / `UnequipCurrentWeapon` / `DropCurrentWeapon`；只依赖 `ACharacter` 与武器 Actor |
 | `Equipment/PVPWeaponAttachmentTypes.h` | 配件槽位契约：`E_PVPWeaponAttachmentSlot`、`FPVPWeaponAttachmentSpec` / `Option` / `SlotDefinition` / `Loadout`，以及槽位名 / 组件名 / 标签 / 默认 socket / 默认父级映射 |
 | `Equipment/PVPWeaponAttachmentCatalog.h/.cpp` | `UPVPWeaponAttachmentCatalog : UDataAsset`：槽位定义 + 候选网格 + `Basic` / `Tactical` 预设，提供 `BuildLoadoutAssembly` / `BuildDefaultAssembly` |
@@ -43,7 +43,8 @@
 
 | 资产 | 路径 | 说明 |
 | --- | --- | --- |
-| `BP_PVP_Weapon_AR` | `/Game/PVP/Actors/` | 父类 `APVPWeaponActor`；配置 `SK_PVP_AR`、`ABP_PVP_FP_Weapon_AR_C`、`ik_hand_gun`、`SOCKET_Muzzle`、拾取半径与三组 Montage；组件树含 `ATT_Handguard` / `ATT_FrontSight` / `ATT_RearSight` / `ATT_Magazine`（基础型），`AttachmentCatalog` 指向目录资产 |
+| `BP_PVP_Weapon_AR` | `/Game/PVP/Actors/` | 父类 `APVPWeaponActor`；配置 `SK_PVP_AR`、`ABP_PVP_FP_Weapon_AR_C`、`ik_hand_gun`、`SOCKET_Muzzle`、拾取半径与四组 Montage（Equip / Fire / AimedFire / Reload）；组件树含 `ATT_Handguard` / `ATT_FrontSight` / `ATT_RearSight` / `ATT_Magazine`（基础型），`AttachmentCatalog` 指向目录资产 |
+| `AM_PVP_FP_AR_Fire_Aimed` | `/Game/PVPDemo/Weapons/AssaultRifle/Animations/Character/FP/Combat/` | 由 `A_PVP_FP_AR_Fire_Aimed` 经 `BuildMontageFromSequence` 生成的单 Slot（`DefaultSlot`）Montage，瞄准射击用；挂到 `BP_PVP_Weapon_AR` 的 `AimedFireMontage` |
 | `DA_PVP_WeaponAttachmentCatalog` | `/Game/PVP/Data/` | 配件目录：8 个槽位定义（父级 / socket / 组件名 / 候选网格）+ `Basic` / `Tactical` 两套预设 |
 | 配件网格 | `/Game/PVPDemo/Weapons/AssaultRifle/Attachments/` | 7 个槽位子目录共 20 个网格；枪身 3 个与非装配件 4 个留在 `Meshes/` |
 | `ABP_PVP_FP_Weapon_AR` | `/Game/PVP/Animation/AnimBP/` | 父类 `UAnimInstance`；`SequencePlayer(A_PVP_WEP_AR_Reference)` → `DefaultSlot` → `Root` |
@@ -54,10 +55,11 @@
 
 | 入口 | 作用 |
 | --- | --- |
-| `Content/Python/setup_pvp_weapon.py` | 校验依赖 → 重建武器 ABP → 原地确保角色 ABP Slot → 复用 / 创建武器 BP 并设 CDO → 放置 / 更新地图拾取物 → 读回并写报告 |
+| `Content/Python/setup_pvp_weapon.py` | 校验依赖 → 生成 `AM_PVP_FP_AR_Fire_Aimed` → 重建武器 ABP → 原地确保角色 ABP Slot → 复用 / 创建武器 BP 并设 CDO（含 `AimedFireMontage`）→ 放置 / 更新地图拾取物 → 读回并写报告 |
 | `Content/Python/reorg_pvp_weapon_attachments.py` | 配件网格按槽位归位（默认 dry-run，`PVP_ATTACHMENT_REORG_APPLY=1` 执行）：pre-flight → SHA256 备份 → `rename_asset` → 重定向清理 → 保存 → 校验 → 报告 |
 | `Content/Python/setup_pvp_weapon_assembly.py` | 生成 / 更新配件目录 → 调用 `PVPWeaponAssemblyBuilder` 装配（`PVP_WEAPON_LOADOUT=Basic\|Tactical`）→ 把目录挂到 BP CDO → 逐项读回 → 报告 |
 | `Saved/PVPWeaponReport/report.{json,md}` | Python 汇总报告（检查项、BP 默认值、地图实例、C++ 构建器报告） |
+| `Saved/PVPWeaponReport/aimed_fire_montage_builder.json` | `BuildMontageFromSequence` 的 C++ 报告（源序列 / Slot / 段 / section / 骨架） |
 | `Saved/PVPWeaponReport/weapon_abp_builder.json` | `BuildWeaponAnimBlueprint` 的 C++ 报告 |
 | `Saved/PVPWeaponReport/slot_builder.json` | `EnsureMontageSlot` 的 C++ 报告 |
 | `Saved/PVPAttachmentReport/reorg.{json,md}` | 配件归位报告（分类表、移动表、备份 SHA256、校验结果） |
@@ -79,7 +81,9 @@
 | 装备组件只依赖 `ACharacter` 与武器 Actor | `Character → Equipment` 单向；Equipment 不反向包含角色具体类，也不依赖 Game / GAS |
 | `EnsureMontageSlot` 原地插入而不是删除重建角色 ABP | `BP_PVPBaseCharacter` 的 Mesh AnimClass 覆盖指向 `ABP_PVP_FP_Locomotion`，删除重建会带来引用丢失风险 |
 | 武器 ABP 使用 `A_PVP_WEP_AR_Reference` + `DefaultSlot` | 无 Montage 时保持武器参考姿势，有 Montage 时由 Slot 覆盖；与迁移 Montage 的 Slot 名一致 |
-| 拾取后默认播放 Equip，Fire / Reload 仅暴露接口 | 用户确认先跑通三类示例；未经输入系统接入前不擅自新增动作 |
+| 拾取后默认播放 Equip，Fire / Reload 仅暴露接口 | 用户确认先跑通三类示例；输入接入由后续里程碑单独完成 |
+| 瞄准射击用独立 Montage 对，武器侧复用 Fire | 瞄准射击的角色姿态需要 aimed 序列（`A_PVP_FP_AR_Fire_Aimed`），武器后坐动画两者相同；`AimedFireMontage` 为空时回退 `FireMontage`，兼容只配腰射的武器 |
+| 由 `BuildMontageFromSequence` 生成 Montage | 迁移资产只有 aimed 序列、没有 Montage；Python 无法稳定创建 Montage 轨道，交给编辑器 C++ 的 `UAnimMontageFactory` 并强制 `DefaultSlot` |
 | 武器 Actor `bReplicates=false` | 当前无装备网络方案，先做本地表现；后续复制化或 GAS 接管 |
 | 配件槽位枚举 / 结构体定义在 C++（`PVPWeaponAttachmentTypes.h`） | 编辑器构建器与运行时接口都要按槽位传参；蓝图枚举无法被 C++ 引用，C++ 与蓝图各定义一份必然漂移。`UENUM/USTRUCT` 对蓝图完全可见，可编辑部分放 `DA_PVP_WeaponAttachmentCatalog` |
 | 配件组件放 `BP_PVP_Weapon_AR` 组件树，而不是运行时动态创建 | 用户要求"在已创建的蓝图里组装"：组件在编辑器可见、可手动微调；运行时只按标签建表，不做创建 |
@@ -119,19 +123,20 @@ UnrealEditor-Cmd.exe "<project>/PVPDemo.uproject" -run=PythonScript ^
 
 脚本阶段：
 
-1. 校验 `SKEL_PVP_AR`、`SK_PVP_AR`、`A_PVP_WEP_AR_Reference`、角色 / 武器 Montage、`BP_PVPBaseCharacter`。
-2. 删除 `ABP_PVP_FP_Weapon_AR` 并调用 `BuildWeaponAnimBlueprint` 重建，编译 / 保存 / 读回 Slot 与接线。
-3. 调用 `EnsureMontageSlot` 给 `ABP_PVP_FP_Locomotion` 加 `DefaultSlot`；已存在且接线正确时保持原样。
-4. 复用 / 创建 `BP_PVP_Weapon_AR`，设置 CDO 网格、AnimClass、挂点、拾取半径与三组 Montage；编译保存后逐项读回。
-5. 加载 `L_PVP_Showcase`，按标签 `PVP_WeaponPickup_AR` 复用 / 清理 / 生成一把武器；保存并重新加载读回数量。
-6. 检查 `BP_PVPBaseCharacter` 包内仍引用 `ABP_PVP_FP_Locomotion`。
+1. 校验 `SKEL_PVP_AR`、`SK_PVP_AR`、`A_PVP_WEP_AR_Reference`、`SKEL_PVP_Mannequin`、`SKM_PVP_FP_Manny_Simple`、`A_PVP_FP_AR_Fire_Aimed`、角色 / 武器 Montage、`BP_PVPBaseCharacter`。
+2. 删除旧 `AM_PVP_FP_AR_Fire_Aimed`，调用 `BuildMontageFromSequence` 生成单 Slot Montage，读回源序列 / Slot / 段 / section / 骨架。
+3. 删除 `ABP_PVP_FP_Weapon_AR` 并调用 `BuildWeaponAnimBlueprint` 重建，编译 / 保存 / 读回 Slot 与接线。
+4. 调用 `EnsureMontageSlot` 给 `ABP_PVP_FP_Locomotion` 加 `DefaultSlot`；已存在且接线正确时保持原样。
+5. 复用 / 创建 `BP_PVP_Weapon_AR`，设置 CDO 网格、AnimClass、挂点、拾取半径与四组 Montage（含 `AimedFireMontage`）；编译保存后逐项读回。
+6. 加载 `L_PVP_Showcase`，按标签 `PVP_WeaponPickup_AR` 复用 / 清理 / 生成一把武器；保存并重新加载读回数量。
+7. 检查 `BP_PVPBaseCharacter` 包内仍引用 `ABP_PVP_FP_Locomotion`，并读取 CDO Mesh AnimClass 确认覆盖未丢。
 
 ### 4.4 修改成对动画
 
 1. 角色 Montage 必须使用 `SKEL_PVP_Mannequin`，武器 Montage 必须使用 `SKEL_PVP_AR`，Slot 均为 `DefaultSlot`。
-2. 在 `BP_PVP_Weapon_AR` 的 `EquipMontage` / `FireMontage` / `ReloadMontage` 中成对替换。
-3. 通过 `PlayEquipMontage` / `PlayFireMontage` / `PlayReloadMontage` 触发；不要直接对角色 Mesh 单独播放。
-4. 重跑生成脚本读回三组 Montage 路径。
+2. 在 `BP_PVP_Weapon_AR` 的 `EquipMontage` / `FireMontage` / `AimedFireMontage` / `ReloadMontage` 中成对替换。
+3. 通过 `PlayEquipMontage` / `PlayFireMontage` / `PlayAimedFireMontage` / `PlayReloadMontage` 触发；不要直接对角色 Mesh 单独播放。角色在瞄准时调用 `PlayAimedFireMontage`，空对自动回退 `PlayFireMontage`。
+4. 重跑生成脚本读回四组 Montage 路径；`AM_PVP_FP_AR_Fire_Aimed` 由 `A_PVP_FP_AR_Fire_Aimed` 重新生成，不要手改生成物。
 
 ### 4.5 配件归位与蓝图内装配
 
@@ -271,6 +276,24 @@ python Content/Python/verify_pvp_asset_layout.py
 | 正确做法 | 读回时先取 `ParentComponentOrVariableName`，为空再用 `USimpleConstructionScript::FindParentNode(Node)` 取 SCS 父节点名 |
 | 验证方式 | `report.md` 中 `ATT_FrontSight` / `ATT_ForeGrip` / `ATT_Muzzle` / `ATT_Laser` 的 `parent` 为 `ATT_Handguard` |
 
+### 踩坑 13：Python 把 BlueprintPure 无参函数当成可调用方法
+
+| 要素 | 内容 |
+| --- | --- |
+| 现象 | 冒烟脚本调用 `weapon.is_equipped()` 抛 `TypeError: 'bool' object is not callable`；`True()` / `False()` 类似 |
+| 根因 | UE Python 把无参 `BlueprintPure` 函数暴露为属性而不是方法；`is_equipped` 在 Python 里是 `bool` |
+| 正确做法 | 读状态用属性：`weapon.is_equipped`、`equipment.has_weapon`；有参数的纯函数与 `BlueprintCallable` 仍按方法调用 |
+| 验证方式 | 冒烟脚本不再抛 `TypeError`，装备 / 卸下断言通过 |
+
+### 踩坑 14：重建角色 ABP 后忘记校验 AnimClass 覆盖
+
+| 要素 | 内容 |
+| --- | --- |
+| 现象 | `setup_pvp_anim_blueprint.py` 重建 `ABP_PVP_FP_Locomotion` 后，`BP_PVPBaseCharacter` 仍显示旧 AnimClass 或回退到 `ABP_PVP_FP_BaseCharacter` |
+| 根因 | Mesh AnimClass 是蓝图实例覆盖；删除重建同名资产可能让引用失效 |
+| 正确做法 | 生成后由 `setup_pvp_weapon.py` 读取 `BP_PVPBaseCharacter` CDO 的 `Mesh.AnimClass` 断言等于 `ABP_PVP_FP_Locomotion_C`（`character.locomotion_anim_class`）；失败时在编辑器中手动重指，不要用 Python 改继承 Mesh 模板 |
+| 验证方式 | 报告 `character.locomotion_anim_class` 与 `character.locomotion_reference` 均 PASS |
+
 ---
 
 ## 6. 校验、报告与冒烟
@@ -288,10 +311,11 @@ UnrealEditor-Cmd.exe "<project>/PVPDemo.uproject" -run=PythonScript ^
 期望：`Saved/PVPWeaponReport/report.md` 顶部 `result: PASS`，无 Errors / Warnings；关键检查项：
 
 - `weapon_abp.compiled` / `weapon_abp.builder_slot` / `weapon_abp.wiring.*`
+- `aimed_fire.builder_source` / `builder_slot` / `slot_matches` / `source_segment` / `skeleton` / `segments` / `sections` / `runtime_slot`
 - `character_slot.ensured` / `character_slot.report_wired`
-- `weapon_bp.mesh1p` / `anim1p` / `attach_socket` / `muzzle_socket` / 三组 Montage
+- `weapon_bp.mesh1p` / `anim1p` / `attach_socket` / `muzzle_socket` / 四组 Montage（含 `aimed_fire_montage`）
 - `map.pickup_count`（1） / `map.pickup_class`
-- `character.locomotion_reference`
+- `character.locomotion_anim_class` / `character.locomotion_reference`
 
 配件侧（`Saved/PVPAttachmentReport/report.md`）：
 
@@ -331,7 +355,7 @@ UnrealEditor-Cmd.exe "<project>/PVPDemo.uproject" -run=PythonScript ^
 
 ## 7. 已知限制与后续路线
 
-- 无开火伤害、弹药、换弹状态机、后坐力、ADS。
+- 无开火伤害、弹药、射速、换弹状态机、后坐力；ADS 姿态 / FOV 由 `Character/` + `Animation/` 接入，武器侧只有瞄准射击 Montage。
 - 无 3P 角色与 `Mesh3P` 可见性切换；`SetPerspective` 仅预留。
 - 无网络复制与服务器权威装备状态。
 - 无武器切换 / 多武器槽 / DataAsset 定义。

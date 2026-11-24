@@ -67,6 +67,18 @@ public:
 	const UInputAction* FindNativeInputActionForTag(const FGameplayTag& InputTag) const;
 
 	/**
+	 * Appends the native tag slots a previously saved asset is missing (Move / Look / Jump / Run /
+	 * Aim / Fire order). Assets serialized before the Aim / Fire milestone still contain only four
+	 * slots, and the constructor does not run again for them, so
+	 * Content/Python/setup_pvp_input.py calls this migration helper instead of deleting the data
+	 * asset that BP_PVPBaseCharacter already references.
+	 *
+	 * @return number of slots that were appended.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Input")
+	int32 EnsureNativeInputActionSlots();
+
+	/**
 	 * Sets the action of an existing tag slot. Used by Content/Python/setup_pvp_input.py: gameplay
 	 * tags cannot be built from script, so the tag slots are seeded in the constructor and script
 	 * only fills the actions in by index.

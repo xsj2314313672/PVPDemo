@@ -3,7 +3,7 @@
 > 维度：技能层（GameplayTag 原生声明；GAS 基础设施未搭建）
 > 模块：GAS
 > 适用工程：PVPDemo（UE 5.9）
-> 最后更新：2026-11-23
+> 最后更新：2026-11-24
 > 上游规范：`AGENTS.md`、`Docs/AI-Workflow.md`、`Docs/Source-Structure.md`、`Docs/Content-Structure.md`
 > 配套文档：`Docs/GAS/README.md`（导航与 Tag 速查）、`Docs/GAS/GAS-Dev.md`（开发流程与踩坑）
 
@@ -147,7 +147,7 @@ Game/（注入 IMC，不直接消费 Tag）
 
 ### 5.1 `Input/` 如何消费
 
-- `UPVPInputConfig::UPVPInputConfig()` 直接引用 4 个 Tag 建立槽位，顺序为 Move / Look / Jump / Run。
+- `UPVPInputConfig::UPVPInputConfig()` / `EnsureNativeInputActionSlots()` 直接引用 6 个 Tag 建立槽位，顺序为 Move / Look / Jump / Run / Aim / Fire。
 - `UPVPInputConfig::FindNativeInputActionForTag(const FGameplayTag&)` 以 Tag 相等匹配 IA。
 - 新增 Tag 时本模块要先提供符号，`Input/` 才能编译；顺序上 Tag 定义先行。
 

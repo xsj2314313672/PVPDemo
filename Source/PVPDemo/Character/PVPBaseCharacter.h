@@ -44,6 +44,7 @@ public:
 
 	//~ Begin AActor / APawn Interface
 	virtual void BeginPlay() override;
+	virtual void Tick(float DeltaSeconds) override;
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 	//~ End AActor / APawn Interface
 
@@ -83,6 +84,21 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "PVP|Movement")
 	bool bIsRunning = false;
 
+	/**
+	 * True while the Aim action is held and a weapon is equipped. Drives the aimed locomotion blend
+	 * in ABP_PVP_FP_Locomotion and the camera field of view transition; read-only for presentation.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "PVP|Aim")
+	bool bIsAiming = false;
+
+	/** Camera field of view while aiming (CameraFP starts at 100). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "PVP|Aim", meta = (ClampMin = "5.0", ClampMax = "170.0"))
+	float AimFieldOfView = 70.0f;
+
+	/** Interpolation speed (per second) used when entering / leaving the aim field of view. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "PVP|Aim", meta = (ClampMin = "0.1"))
+	float AimInterpolationSpeed = 10.0f;
+
 protected:
 	/** Move relative to the control rotation yaw; ignored while the controller is missing. */
 	void Input_Move(const FInputActionValue& Value);
@@ -96,8 +112,31 @@ protected:
 	void Input_RunStarted(const FInputActionValue& Value);
 	void Input_RunCompleted(const FInputActionValue& Value);
 
-	/** Apply the walk / run speed for the new running state. */
+	/** Enters / leaves aim; ignored while no weapon is equipped. */
+	void Input_AimStarted(const FInputActionValue& Value);
+	void Input_AimCompleted(const FInputActionValue& Value);
+
+	/** Plays one paired fire montage, choosing the aimed variant while aiming. Ignored without a weapon. */
+	void Input_FireStarted(const FInputActionValue& Value);
+
+	/** Apply the walk / run speed for the new running state (never exceeds WalkSpeed while aiming). */
 	void SetRunning(bool bNewRunning);
+
+	/**
+	 * Toggles the aim state. Entering requires an equipped weapon; leaving always succeeds.
+	 * The camera field of view is interpolated by Tick, which is enabled on every change.
+	 */
+	void SetAiming(bool bNewAiming);
+
+	/** Applies WalkSpeed / RunSpeed, forcing WalkSpeed while aiming (the aimed set has no run samples). */
+	void ApplyMovementSpeed();
+
+	/** True when the equipment component holds a weapon. */
+	bool HasEquippedWeapon() const;
+
+	/** CameraFP field of view captured at BeginPlay, used as the hip fire target. */
+	UPROPERTY(Transient)
+	float DefaultFieldOfView = 100.0f;
 
 	// TODO(3P): the reference blueprint additionally has CameraPivotPoint (StaticMeshComponent
 	// gizmo) -> SpringArm -> CameraTP, followed by PP_Bodycam and SpotLight. Third person support,

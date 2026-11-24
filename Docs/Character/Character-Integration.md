@@ -3,7 +3,7 @@
 > 维度：角色（Character / 移动状态 / 1P 相机内置）
 > 模块：Character
 > 适用工程：PVPDemo（UE 5.9）
-> 最后更新：2026-11-23
+> 最后更新：2026-11-24
 > 上游规范：`AGENTS.md`、`Docs/AI-Workflow.md`、`Docs/Source-Structure.md`、`Docs/Content-Structure.md`
 > 配套文档：`Docs/Character/README.md`（导航与能力速查）、`Docs/Character/Character-Dev.md`（开发流程与踩坑）
 
@@ -68,19 +68,21 @@ Content/PVP/Input
         │  APVPPlayerController.BeginPlay：AddMappingContext
         ▼
 UPVPInputComponent（APVPBaseCharacter 的 InputComponent）
-        │  SetupPlayerInputComponent：按 Tag 绑定 4 个动作 / 6 条事件
+        │  SetupPlayerInputComponent：按 Tag 绑定 6 个动作 / 9 条事件
         ▼
 APVPBaseCharacter
   ├── Input_Move  → AddMovementInput（ControlRotation.Yaw 平面）
   ├── Input_Look  → AddControllerYawInput / AddControllerPitchInput
   ├── Input_Jump* → Jump / StopJumping
-  └── Input_Run*  → SetRunning → MaxWalkSpeed
+  ├── Input_Run*  → SetRunning → ApplyMovementSpeed
+  ├── Input_Aim*  → SetAiming → bIsAiming / ApplyMovementSpeed / Tick(FOV)
+  └── Input_Fire* → EquipmentComponent->GetCurrentWeapon()->PlayFire/AimedFireMontage
         │
-        ├── CharacterMovement：MaxWalkSpeed 走 / 跑
+        ├── CharacterMovement：MaxWalkSpeed 走 / 跑（瞄准期间固定走速）
         ├── Controller：ControlRotation（Yaw / Pitch，Yaw 同时驱动 Actor 朝向）
-        ├── CameraFP：bUsePawnControlRotation 消费 ControlRotation，位置挂 head 骨骼
+        ├── CameraFP：bUsePawnControlRotation 消费 ControlRotation，位置挂 head 骨骼；瞄准 FOV 插值
         ├── EquipmentComponent：当前武器（拾取入口，武器逻辑在 Equipment/）
-        └── Animation：只读 bIsRunning / ControlRotation（不反向写）
+        └── Animation：只读 bIsRunning / bIsAiming / ControlRotation（不反向写）
 ```
 
 ### 3.2 资产引用链
@@ -91,12 +93,13 @@ L_PVP_Showcase（WorldSettings.GameMode → BP_PVPGameMode）
                 ├── DefaultPawnClass → BP_PVPBaseCharacter
                 │       └── CDO.InputConfig → DA_PVP_InputConfig
                 │               ├── IA_PVP_Move / IA_PVP_Look
-                │               └── IA_PVP_Jump / IA_PVP_Run
+                │               ├── IA_PVP_Jump / IA_PVP_Run
+                │               └── IA_PVP_ADS / IA_PVP_Fire
                 └── PlayerControllerClass → BP_PVPPlayerController
 ```
 
 - `BP_PVPBaseCharacter` 继承 `APVPBaseCharacter`，CDO 的 `InputConfig` 由 `setup_pvp_input.py` 写入。
-- `DA_PVP_InputConfig` 只引用已绑定的 4 个 IA；`IMC_PVP_Default` 的其余映射不进入角色绑定。
+- `DA_PVP_InputConfig` 只引用已绑定的 6 个 IA；`IMC_PVP_Default` 的其余映射不进入角色绑定。
 - 原生 C++ 类（`APVPBaseCharacter`）不硬编码任何蓝图路径，装配关系全部落在蓝图 CDO 与地图 WorldSettings 上。
 
 ---
@@ -112,10 +115,14 @@ L_PVP_Showcase（WorldSettings.GameMode → BP_PVPGameMode）
 | `InputConfig` | 同上 | `TObjectPtr<UPVPInputConfig>`，`EditDefaultsOnly` / `BlueprintReadOnly` | Tag → IA 配置，`SetupPlayerInputComponent` 消费 |
 | `WalkSpeed` | 同上 | `float`，默认 `300`，`EditDefaultsOnly`，`ClampMin=0` | 未按住跑时的 `MaxWalkSpeed` |
 | `RunSpeed` | 同上 | `float`，默认 `600`，`EditDefaultsOnly`，`ClampMin=0` | 按住跑时的 `MaxWalkSpeed` |
-| `bIsRunning` | 同上 | `bool`，`BlueprintReadOnly` | 跑步状态，表现层只读 |
-| `Input_Move` / `Input_Look` / `Input_JumpStarted` / `Input_JumpCompleted` / `Input_RunStarted` / `Input_RunCompleted` | 同上（`protected`） | `void(const FInputActionValue&)` | 原生输入回调，只由 `SetupPlayerInputComponent` 绑定 |
-| `SetRunning(bool)` | 同上（`protected`） | `void` | 切换跑步状态并写 `MaxWalkSpeed`；状态相同直接返回 |
-| `BeginPlay` / `SetupPlayerInputComponent` | 同上 | `AActor` / `APawn` 虚函数覆写 | 速度重应用与输入绑定入口 |
+| `bIsRunning` | 同上 | `bool`，`BlueprintReadOnly` | 跑步状态，表现层只读；瞄准期间不应用跑速 |
+| `bIsAiming` | 同上 | `bool`，`BlueprintReadOnly` | 瞄准状态，表现层只读；空手无法进入 |
+| `AimFieldOfView` / `AimInterpolationSpeed` | 同上 | `float`，默认 `70` / `10`，`EditDefaultsOnly` / `BlueprintReadOnly` | 瞄准 FOV 目标与插值速度 |
+| `Input_Move` / `Input_Look` / `Input_JumpStarted` / `Input_JumpCompleted` / `Input_RunStarted` / `Input_RunCompleted` / `Input_AimStarted` / `Input_AimCompleted` / `Input_FireStarted` | 同上（`protected`） | `void(const FInputActionValue&)` | 原生输入回调，只由 `SetupPlayerInputComponent` 绑定 |
+| `SetRunning(bool)` / `SetAiming(bool)` | 同上（`protected`） | `void` | 切换跑 / 瞄准状态；状态相同直接返回；统一经 `ApplyMovementSpeed` |
+| `ApplyMovementSpeed()` | 同上（`protected`） | `void` | 唯一的 `MaxWalkSpeed` 写入点：`bIsRunning && !bIsAiming ? RunSpeed : WalkSpeed` |
+| `Tick(float)` | 同上 | `AActor` 虚函数覆写 | 在瞄准或 FOV 过渡期间开启；瞄准期间保留以检测武器丢失，松开瞄准且收敛后自动关闭 |
+| `BeginPlay` / `SetupPlayerInputComponent` | 同上 | `AActor` / `APawn` 虚函数覆写 | 速度 / FOV 基线缓存与输入绑定入口 |
 
 ### 4.2 资产与配置接口
 
@@ -131,8 +138,9 @@ L_PVP_Showcase（WorldSettings.GameMode → BP_PVPGameMode）
 **契约**：
 
 - `CameraFP` 的挂点（`CharacterMesh0` 的 `head` 骨骼）、相对旋转 `(0,90,-90)`、FOV `100`、`bUsePawnControlRotation=true` 是对照脚本的校验项，改动即需重跑 `compare_tfa_character.py`。
-- `bIsRunning` 只读；表现层不得写回，也不得据此跳过逻辑更新。
-- `WalkSpeed` / `RunSpeed` 的生效点是 `BeginPlay`，不是构造函数（见 `Character-Dev.md` 踩坑 3）。
+- `bIsRunning` / `bIsAiming` 只读；表现层不得写回，也不得据此跳过逻辑更新。
+- `WalkSpeed` / `RunSpeed` 的唯一生效点是 `ApplyMovementSpeed`（`BeginPlay` 与状态变化都会调用），不是构造函数（见 `Character-Dev.md` 踩坑 3）。
+- 瞄准 FOV 的基线是 `BeginPlay` 缓存的 `DefaultFieldOfView`；蓝图改 `CameraFP.FieldOfView` 后应重新进 PIE 让基线刷新。
 
 ---
 
@@ -157,9 +165,9 @@ APVPPlayerController.BeginPlay（IMC 注入）
 
 ### 5.3 表现层如何只读
 
-- Animation：当前 `UPVPAnimInstanceBase` 只读 `bIsRunning`、`Velocity`、`RunSpeed` 与移动组件模式；`ABP_PVP_FP_Locomotion` 消费这些变量输出四状态姿态，并已挂到 `BP_PVPBaseCharacter` 的 Mesh AnimClass 实际生效（见 `Docs/Animation/`）；后续若要手臂 / 武器跟随俯仰，再读 `ControlRotation.Pitch` / `GetBaseAimRotation()` 驱动 AimOffset / 脊柱。
-- Camera（当前为内置 `CameraFP`）：消费 `ControlRotation` 与挂点位置，不写角色状态，不注入 IMC。
-- UI（未实现）：经 `APVPPlayerController::GetPVPCharacter()` 读取，不直接改 `MaxWalkSpeed` / `bIsRunning`。
+- Animation：当前 `UPVPAnimInstanceBase` 只读 `bIsRunning`、`bIsAiming`、`Velocity`、`RunSpeed` 与移动组件模式；`ABP_PVP_FP_Locomotion` 消费这些变量输出四状态姿态与瞄准混合，并已挂到 `BP_PVPBaseCharacter` 的 Mesh AnimClass 实际生效（见 `Docs/Animation/`）；后续若要手臂 / 武器跟随俯仰，再读 `ControlRotation.Pitch` / `GetBaseAimRotation()` 驱动 AimOffset / 脊柱。
+- Camera（当前为内置 `CameraFP`）：消费 `ControlRotation` 与挂点位置，不写角色状态，不注入 IMC；瞄准 FOV 由角色写入。
+- UI（未实现）：经 `APVPPlayerController::GetPVPCharacter()` 读取，不直接改 `MaxWalkSpeed` / `bIsRunning` / `bIsAiming`。
 
 ### 5.4 `GAS/` 扩展点（未实现）
 

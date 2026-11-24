@@ -3,7 +3,7 @@
 > 维度：角色（Character / 移动状态 / 1P 相机内置）
 > 模块：Character
 > 适用工程：PVPDemo（UE 5.9）
-> 最后更新：2026-11-23
+> 最后更新：2026-11-24
 > 上游规范：`AGENTS.md`、`Docs/AI-Workflow.md`、`Docs/Source-Structure.md`、`Docs/Content-Structure.md`
 > 配套文档：`Docs/Character/Character-Dev.md`（开发流程与踩坑）、`Docs/Character/Character-Integration.md`（依赖与接口契约）
 
@@ -17,8 +17,9 @@
 
 - 角色实体的组件装配：胶囊、`CharacterMesh0` 相对变换、`CameraFP`、动画蓝图、`EquipmentComponent`（装备层入口）。
 - 移动状态：走 / 跑速度切换（`WalkSpeed` / `RunSpeed` / `bIsRunning`）与 `MaxWalkSpeed` 应用时机。
-- 原生输入的处理函数实现：Move / Look / Jump / Run（绑定关系与键位的权威表在 `Docs/Input/README.md` 第 3 节）。
-- 为表现层提供只读状态：`bIsRunning`、`ControlRotation`、`CameraFP`。
+- 瞄准状态：`bIsAiming`、瞄准 FOV（`AimFieldOfView` / `AimInterpolationSpeed`）与瞄准期间的走速限制；`Tick` 只用于 FOV 插值。
+- 原生输入的处理函数实现：Move / Look / Jump / Run / Aim / Fire（绑定关系与键位的权威表在 `Docs/Input/README.md` 第 3 节）。
+- 为表现层提供只读状态：`bIsRunning`、`bIsAiming`、`ControlRotation`、`CameraFP`。
 
 **非职责**（不属于本模块，不要在这里实现）：
 
@@ -43,7 +44,7 @@
 | 我要做的事 | 读哪里 |
 | --- | --- |
 | 查组件默认值、相机参数、走跑速度与状态 | 本文第 3 节 |
-| 查 4 个动作绑到哪个函数、键位与 ValueType | `Docs/Input/README.md` 第 3 节（本文只做链接） |
+| 查 6 个动作绑到哪个函数、键位与 ValueType | `Docs/Input/README.md` 第 3 节（本文只做链接） |
 | 修改胶囊 / Mesh / 相机默认值并保持与参考蓝图一致 | `Character-Dev.md` 第 4 节（SOP）+ 第 6 节（`compare_tfa_character.py`） |
 | 排查"绑定数为 0 / 输入无响应" | `Character-Dev.md` 第 5 节踩坑 1，日志见本文第 4 节 |
 | 排查"跑步速度不对 / 蓝图改了速度不生效" | `Character-Dev.md` 第 5 节踩坑 3 |
@@ -67,7 +68,8 @@
 | `BaseEyeHeight` / `CrouchedEyeHeight` | `64` / `32` | 眼高，影响 AI 与部分相机计算 |
 | Actor 旋转跟随 | Yaw 跟随 Controller；Pitch / Roll **不**跟随 | `bUseControllerRotationYaw=true`、Pitch/Roll `false` |
 | `CameraFP` 挂点 | `head` **骨骼**（非 Socket），相对旋转 `(0,90,-90)` | 位置随第一人称动画的头 bob / 蹲伏姿态 |
-| `CameraFP` 参数 | `FieldOfView=100`、`bUsePawnControlRotation=true`、`PostProcessBlendWeight=1.0`、`bAutoActivate=true` | 旋转来自 `ControlRotation`，动画不参与视角旋转 |
+| `CameraFP` 参数 | `FieldOfView=100`、`bUsePawnControlRotation=true`、`PostProcessBlendWeight=1.0`、`bAutoActivate=true` | 旋转来自 `ControlRotation`，动画不参与视角旋转；`BeginPlay` 把当前 FOV 缓存为 `DefaultFieldOfView`（腰射目标值） |
+| 瞄准相机 | `AimFieldOfView=70`、`AimInterpolationSpeed=10` | 瞄准时 `Tick` 内 `FInterpTo` 到 70，退出回 `DefaultFieldOfView`；瞄准期间保留 Tick 以检测武器丢失，松开瞄准且 FOV 收敛后关闭 Tick |
 | Mesh / AnimBP | 构造期 `FObjectFinder`：`SKM_PVP_FP_Manny_Simple`、`ABP_PVP_FP_BaseCharacter`；`BP_PVPBaseCharacter` 的 Mesh AnimClass 已覆盖为 `ABP_PVP_FP_Locomotion` | 工程自有路径：`/Game/PVPDemo/Characters/Mannequins/Meshes/`、`/Game/PVP/Animation/AnimBP/`；C++ 默认未改，实际生效以蓝图 CDO 覆盖为准 |
 | 输入组件类型 | `OverrideInputComponentClass = UPVPInputComponent` | 通过 `APawn` 钩子指定，未改 `DefaultInput.ini` |
 | `EquipmentComponent` | `UPVPEquipmentComponent`，`VisibleAnywhere` / `BlueprintReadOnly` | 构造期 `CreateDefaultSubobject`；维护当前武器，拾取由 `Equipment/` 的武器 Overlap 调用；不实现武器逻辑 |
@@ -78,10 +80,13 @@
 | --- | --- | --- | --- |
 | `WalkSpeed` | `300` | `EditDefaultsOnly` / `BlueprintReadOnly` | 未按住跑时的 `MaxWalkSpeed`，蓝图可覆盖 |
 | `RunSpeed` | `600` | 同上 | 按住跑时的 `MaxWalkSpeed` |
-| `bIsRunning` | `false` | `BlueprintReadOnly` | 跑步状态，**供 Animation / Camera 只读** |
-| `MaxWalkSpeed` | 构造与 `BeginPlay` 各写一次 | 由 `UCharacterMovementComponent` 持有 | 构造写默认值，`BeginPlay` 按蓝图覆盖后的 `WalkSpeed` 重写 |
+| `bIsRunning` | `false` | `BlueprintReadOnly` | 跑步状态（Shift 是否按住），**供 Animation / Camera 只读**；瞄准期间保留原值但不应用跑速 |
+| `bIsAiming` | `false` | `BlueprintReadOnly` | 瞄准状态，**供 Animation / Camera 只读**；空手时无法进入 |
+| `AimFieldOfView` | `70` | `EditDefaultsOnly` / `BlueprintReadOnly` | 瞄准时的相机 FOV |
+| `AimInterpolationSpeed` | `10` | `EditDefaultsOnly` / `BlueprintReadOnly` | FOV 进出瞄准的插值速度 |
+| `MaxWalkSpeed` | 构造、`BeginPlay`、状态变化时写入 | 由 `UCharacterMovementComponent` 持有 | 由 `ApplyMovementSpeed` 统一计算：`bIsRunning && !bIsAiming ? RunSpeed : WalkSpeed` |
 
-**速度切换只发生在状态变化时**：`SetRunning` 先比较 `bIsRunning`，相同则直接返回，不做逐帧写入；`TODO(Network/GAS)` 标注了当前仅本地 / 自主代理生效。
+**速度切换只发生在状态变化时**：`SetRunning` / `SetAiming` 先比较状态，相同则直接返回，不做逐帧写入；两者都调用 `ApplyMovementSpeed`，瞄准期间即使按住 Shift 也只应用 `WalkSpeed`，松开瞄准后若 Shift 仍按住则恢复 `RunSpeed`。`TODO(Network/GAS)` 标注了当前仅本地 / 自主代理生效。
 
 ### 3.3 输入消费入口（动作权威表在 `Docs/Input/README.md` 第 3 节）
 
@@ -90,9 +95,11 @@
 | 平面移动 | `InputTag.Move` | `Input_Move` | 只用 `ControlRotation.Yaw` 构造平面基向量，`MovementVector.Y` 走前后、`MovementVector.X` 走左右，Pitch 不参与 |
 | 视角 | `InputTag.Look` | `Input_Look` | `AddControllerYawInput(X)` + `AddControllerPitchInput(Y)`，C++ **不取反**（极性由 IMC 的 Negate(Y) 修正） |
 | 跳跃 | `InputTag.Jump` | `Input_JumpStarted` / `Input_JumpCompleted` | `Jump()` / `StopJumping()` |
-| 按住跑 | `InputTag.Run` | `Input_RunStarted` / `Input_RunCompleted` | `SetRunning(true)` / `SetRunning(false)` → 切换 `MaxWalkSpeed` |
+| 按住跑 | `InputTag.Run` | `Input_RunStarted` / `Input_RunCompleted` | `SetRunning(true)` / `SetRunning(false)` → 应用 `MaxWalkSpeed`（瞄准期间仍为走速） |
+| 按住瞄准 | `InputTag.Aim` | `Input_AimStarted` / `Input_AimCompleted` | `SetAiming(true/false)`：有武器才进入；切 `bIsAiming`、走速与 FOV 插值；`Tick` 检测到武器丢失会自动退出 |
+| 射击 | `InputTag.Fire` | `Input_FireStarted` | 有武器时按 `bIsAiming` 调用 `APVPWeaponActor::PlayFireMontage` / `PlayAimedFireMontage`；空手直接返回 |
 
-- 绑定共 **4 个动作、6 条绑定事件**，在 `SetupPlayerInputComponent` 内一次性完成。
+- 绑定共 **6 个动作、9 条绑定事件**，在 `SetupPlayerInputComponent` 内一次性完成。
 - 键位、ValueType、IMC 修饰器、`DA_PVP_InputConfig` 槽位顺序以 `Docs/Input/README.md` 第 3 节为准，本文不复写。
 
 ---
@@ -101,17 +108,20 @@
 
 | 阶段 | 执行者 | 行为 |
 | --- | --- | --- |
-| 构造函数 | `APVPBaseCharacter` | 设置胶囊 / Mesh 相对变换 / 眼高 / 旋转跟随；`OverrideInputComponentClass = UPVPInputComponent`；初始 `MaxWalkSpeed = WalkSpeed`、`bIsRunning = false`；`FObjectFinder` 装配 Mesh 与 AnimBP；创建 `CameraFP` 并挂 `head` 骨骼；创建 `EquipmentComponent` |
+| 构造函数 | `APVPBaseCharacter` | 设置胶囊 / Mesh 相对变换 / 眼高 / 旋转跟随；`OverrideInputComponentClass = UPVPInputComponent`；初始 `MaxWalkSpeed = WalkSpeed`、`bIsRunning = false`；`FObjectFinder` 装配 Mesh 与 AnimBP；创建 `CameraFP` 并挂 `head` 骨骼；创建 `EquipmentComponent`；`Tick` 默认关闭 |
 | 蓝图 CDO（手动完成） | `BP_PVPBaseCharacter` | Mesh AnimClass 覆盖为 `ABP_PVP_FP_Locomotion`；`APVPBaseCharacter` 构造期默认 `ABP_PVP_FP_BaseCharacter` 保持不变 |
-| `BeginPlay` | `APVPBaseCharacter` | 重置 `bIsRunning = false`，按**蓝图覆盖后**的 `WalkSpeed` 重写 `MaxWalkSpeed` |
-| Possess 后 | `APVPBaseCharacter::SetupPlayerInputComponent` | 校验输入组件类型与 `InputConfig`，按 Tag 绑定 6 条事件并打印绑定计数 |
-| 运行时 | Animation / Camera | 只读 `bIsRunning`、`ControlRotation`、`CameraFP` 变换，不写角色状态 |
+| `BeginPlay` | `APVPBaseCharacter` | 重置 `bIsRunning = false`、`bIsAiming = false`；缓存 `CameraFP->FieldOfView` 为 `DefaultFieldOfView`；`ApplyMovementSpeed` 按**蓝图覆盖后**的 `WalkSpeed` 重写 `MaxWalkSpeed` |
+| 瞄准切换 | `APVPBaseCharacter::SetAiming` | 有武器才进入；应用走速并开启 Tick 驱动 FOV；松开瞄准回 `DefaultFieldOfView`，FOV 收敛后关闭 Tick |
+| 每帧（瞄准或 FOV 过渡） | `APVPBaseCharacter::Tick` | `FInterpTo` 插值 `CameraFP` FOV；瞄准期间每帧检查武器是否已被卸下，丢失则 `SetAiming(false)`；仅在松开瞄准且 FOV 收敛后关闭 Tick |
+| Possess 后 | `APVPBaseCharacter::SetupPlayerInputComponent` | 校验输入组件类型与 `InputConfig`，按 Tag 绑定 9 条事件并打印绑定计数 |
+| 运行时 | Animation / Camera | 只读 `bIsRunning`、`bIsAiming`、`ControlRotation`、`CameraFP` 变换，不写角色状态 |
 
 **关键日志**（`LogPVPBaseCharacter`）：
 
 ```text
-LogPVPBaseCharacter: <pawn>: bound 6/6 native input bindings (config=DA_PVP_InputConfig)
+LogPVPBaseCharacter: <pawn>: bound 9/9 native input bindings (config=DA_PVP_InputConfig)
 LogPVPBaseCharacter: <pawn>: running=true max_walk_speed=600.0
+LogPVPBaseCharacter: <pawn>: aiming=true max_walk_speed=300.0
 ```
 
 失败信号与排错顺序见 `Character-Dev.md` 第 5 节、第 6 节。
@@ -123,7 +133,8 @@ LogPVPBaseCharacter: <pawn>: running=true max_walk_speed=600.0
 - **武器装备**：由 `Equipment/` 实现（`APVPWeaponActor` + `UPVPEquipmentComponent`）；本模块只负责构造期创建组件与提供角色 Mesh，武器拾取 / 附着 / 成对 Montage 见 `Docs/Equipment/`。
 - **3P 与透视切换**：参考蓝图中的 `CameraPivotPoint → SpringArm → CameraTP`、`PP_Bodycam`、`SpotLight` 与 `IA_TFA_ToggleCameraPerspective` / `IA_TFA_ToggleCameraAnimation` 均未实现（头文件内 `TODO(3P)`）。
 - **双网格**：当前只有 1P 单网格；1P 手臂 + 3P 全身的可见性管理、`BecomeViewTarget` 回调未接入（规划中的 `PVPPerspectiveComponent`）。
-- **相机模式栈**：`Camera/` 与 `Camera/Modes/` 为预留目录，`CameraFP` 暂置于本模块，待相机系统进入实现阶段再迁出。
+- **相机模式栈**：`Camera/` 与 `Camera/Modes/` 为预留目录，`CameraFP` 与瞄准 FOV 暂置于本模块，待相机系统进入实现阶段再迁出。
+- **瞄准玩法**：本轮只有姿态 / FOV / 走速门控，无 AimOffset、准星 UI、瞄准灵敏度缩放与后坐力。
 - **移动组件扩展**：`PVPCharacterMovementComponent`（冲刺 / 探头的网络预测）未实现。
 - **网络权威速度**：`MaxWalkSpeed` 仅本地 / 自主代理应用，代码内 `TODO(Network/GAS)` 指向后续复制化或 GAS 属性接管。
 - **技能与属性**：无 ASC / AttributeSet / 血量 / 伤害，属 `GAS/` 后续阶段，见 `Docs/GAS/README.md` 第 5 节。
@@ -137,9 +148,9 @@ LogPVPBaseCharacter: <pawn>: running=true max_walk_speed=600.0
 | --- | --- | --- |
 | `Content/Python/dump_tfa_character.py` | 导出参考蓝图 `BP_TFA_BaseCharacter` 的组件树与属性 | `Saved/PVPCharacterDump/tfa_base_character.json`、`tfa_base_character.md` |
 | `Content/Python/compare_tfa_character.py` | 在 TFA 演示图中生成 / 复用 `BP_PVPBaseCharacter`，与参考蓝图逐项比对 1P 数据；结构不符直接抛异常使 commandlet 非零退出 | `Saved/PVPCharacterDump/parity_report.md` |
-| `Content/Python/setup_pvp_input.py` | 校验 IA / IMC，并把 `DA_PVP_InputConfig` 挂到 `BP_PVPBaseCharacter` CDO | `Saved/PVPInputReport/report.md` |
+| `Content/Python/setup_pvp_input.py` | 校验 IA / IMC，把 `DA_PVP_InputConfig` 迁到 6 槽并挂到 `BP_PVPBaseCharacter` CDO | `Saved/PVPInputReport/report.md` |
 | `Content/Python/verify_pvp_game_framework.py` | 校验地图与框架资产的自包含性（含 `BP_PVPBaseCharacter`） | `Saved/PVPGameFrameworkReport/verify.md` |
-| PIE 冒烟 | 移动 / 视角 / 跳跃 / 跑步四向检查 | 清单见 `Character-Dev.md` 第 6 节 |
+| PIE 冒烟 | 移动 / 视角 / 跳跃 / 跑步 / 瞄准 / 射击检查 | 清单见 `Character-Dev.md` 第 6 节 |
 
 运行命令、报告关键项与冒烟步骤见 `Character-Dev.md` 第 6 节。
 

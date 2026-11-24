@@ -3,7 +3,7 @@
 > 维度：会话与玩家入口（GameMode / PlayerController / 默认 IMC 注入）
 > 模块：Game
 > 适用工程：PVPDemo（UE 5.9）
-> 最后更新：2026-11-23
+> 最后更新：2026-11-24
 > 上游规范：`AGENTS.md`、`Docs/AI-Workflow.md`、`Docs/Source-Structure.md`、`Docs/Content-Structure.md`
 > 配套文档：`Docs/Game/README.md`（导航与入口速查）、`Docs/Game/Game-Dev.md`（开发流程与踩坑）
 
@@ -77,7 +77,7 @@ APVPGameMode::StartPlay               → 日志 default_pawn / player_controlle
                         → ClearAllMappings → AddMappingContext（按优先级）
         ▼
 生成 Pawn（BP_PVPBaseCharacter）
-        └── SetupPlayerInputComponent：按 Tag 绑定 4 个动作 / 6 条事件
+        └── SetupPlayerInputComponent：按 Tag 绑定 6 个动作 / 9 条事件
         ▼
 Enhanced Input 按键 → IA → 绑定事件 → APVPBaseCharacter 回调
 ```

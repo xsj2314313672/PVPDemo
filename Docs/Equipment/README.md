@@ -23,8 +23,8 @@
 
 **非职责**（不属于本模块，不要在这里实现）：
 
-- 开火伤害、弹药、换弹状态机、后坐力、ADS：后续 GAS / 武器玩法阶段；本轮只播放 Montage 本体。
-- 输入动作：本轮不新增 `IA_PVP_*` / `InputTag.*`；拾取由 Overlap 自动触发。
+- 开火伤害、弹药、射速、换弹状态机、后坐力：后续 GAS / 武器玩法阶段；本轮只播放 Montage 本体。ADS 姿态 / FOV 由 `Character/` + `Animation/` 接入，武器侧只提供瞄准射击 Montage。
+- 输入动作：本模块不新增 `IA_PVP_*` / `InputTag.*`；Aim / Fire 由 `Character/` 绑定，拾取由 Overlap 自动触发。
 - 第三人称角色：`Mesh3P` 已建好并隐藏，3P 可见性切换与 3P 角色网格属于后续阶段。
 - 网络复制：武器 Actor 本地生成，`bReplicates=false`；装备状态不复制。
 - 相机：1P 视角仍由 `CameraFP` 承担，见 `Docs/Character/README.md`。
@@ -84,6 +84,7 @@
 | --- | --- | --- | --- |
 | `EquipMontage` | `AM_PVP_FP_AR_Equip` | `AM_PVP_FP_WEP_AR_Equip` | `1.0` |
 | `FireMontage` | `AM_PVP_FP_AR_Fire_Auto` | `AM_PVP_FP_WEP_AR_Fire` | `1.0` |
+| `AimedFireMontage` | `AM_PVP_FP_AR_Fire_Aimed` | `AM_PVP_FP_WEP_AR_Fire` | `1.0` |
 | `ReloadMontage` | `AM_PVP_FP_AR_Reload` | `AM_PVP_FP_WEP_AR_Reload` | `1.0` |
 
 所有 Montage 的 Slot 名称均为 `DefaultSlot`。
@@ -96,6 +97,7 @@
 | `Unequip(bool bDropWeapon)` | `BlueprintCallable` | 脱离角色；`bDropWeapon=true` 时放到角色前方并进入拾取冷却 |
 | `DropWeapon()` | `BlueprintCallable` | 等价于 `Unequip(true)` |
 | `PlayEquipMontage()` / `PlayFireMontage()` / `PlayReloadMontage()` | `BlueprintCallable` | 同时播放角色 Mesh 与当前可见武器 Mesh 的成对 Montage |
+| `PlayAimedFireMontage()` | `BlueprintCallable` | 瞄准状态下的成对射击；`AimedFireMontage` 为空时回退 `FireMontage` |
 | `IsEquipped()` | `BlueprintPure` | 是否已被角色持有 |
 | `GetActiveMesh()` | `BlueprintPure` | 当前可见的武器 Mesh（默认 `Mesh1P`） |
 | `GetMuzzleLocation()` | `BlueprintPure` | `SOCKET_Muzzle` 的世界位置，缺失时回退 Actor 位置 |
@@ -177,13 +179,13 @@ LogPVPEquipmentComponent: <component>: equipped <weapon> on <character>.
 
 ## 5. 未实现能力与扩展方向
 
-- **开火 / 换弹玩法**：本轮只提供 `PlayFireMontage` / `PlayReloadMontage` 接口，未绑定输入、未扣弹药、无换弹状态机。
+- **开火 / 换弹玩法**：已由角色把 `IA_PVP_Fire` 接到 `PlayFireMontage` / `PlayAimedFireMontage`（单击一次，腰射 / 瞄准两套），但未扣弹药、无射速 / 后坐力 / 换弹状态机；`PlayReloadMontage` 仍只有接口。
 - **动画通知副作用**：武器 / 角色 Montage 内的 `AN_PVP_*` / `ANS_PVP_*` 会 Cast 到迁移逻辑蓝图 `BP_PVP_BaseWeapon` / `BP_PVP_BaseCharacter`，新的 C++ 武器与 `BP_PVPBaseCharacter` 不是这些类，通知会失败（不生成弹壳 / 弹匣）；Montage 本体仍正常播放。
 - **3P**：`Mesh3P` 组件已存在但隐藏，无 3P 角色网格与可见性管理。
 - **网络**：无复制、无服务器权威装备状态。
 - **武器切换 / 多武器槽**：`UPVPEquipmentComponent` 只维护一把当前武器。
 - **武器 DataAsset**：当前用 Actor 级配置属性，尚未落地规划中的 `PVPWeaponDefinition`；配件侧已有 `DA_PVP_WeaponAttachmentCatalog`。
-- **瞄准 / 后坐 / 枪口特效**：`GetMuzzleLocation` 已提供，但未接 Niagara / 音效。
+- **瞄准 / 后坐 / 枪口特效**：瞄准姿态与 FOV 由 `Character/` + `Animation/` 接入，武器侧只有瞄准射击 Montage；`GetMuzzleLocation` 已提供，但未接 Niagara / 音效。
 - **配件玩法**：已实现分类、槽位切换接口与 `Basic` / `Tactical` 两套装配，未接配件 UI、数值加成与拾取式换装。
 - **3P 配件**：`Mesh3P` 未挂配件，3P 角色落地时再补。
 - **弹匣动画**：装配用静态满弹匣；换弹下坠需改用骨骼弹匣并单独接 AnimClass。
@@ -195,7 +197,7 @@ LogPVPEquipmentComponent: <component>: equipped <weapon> on <character>.
 | 入口 | 作用 | 产物 |
 | --- | --- | --- |
 | UBT 编译 | 编译 `PVPDemoEditor`，验证武器 Actor / 装备组件 / 构建器 | `UnrealEditor-PVPDemo.dll` |
-| `Content/Python/setup_pvp_weapon.py` | 生成武器 ABP / 武器 BP、给角色 ABP 加 `DefaultSlot`、放置关卡拾取物、逐项读回 | `Saved/PVPWeaponReport/report.json`、`report.md`、`weapon_abp_builder.json`、`slot_builder.json` |
+| `Content/Python/setup_pvp_weapon.py` | 生成瞄准射击 Montage / 武器 ABP / 武器 BP、给角色 ABP 加 `DefaultSlot`、放置关卡拾取物、逐项读回 | `Saved/PVPWeaponReport/report.json`、`report.md`、`aimed_fire_montage_builder.json`、`weapon_abp_builder.json`、`slot_builder.json` |
 | `Content/Python/reorg_pvp_weapon_attachments.py` | 把 20 个配件网格按槽位归入 `Attachments/<Group>/`；默认 dry-run，`PVP_ATTACHMENT_REORG_APPLY=1` 执行 | `Saved/PVPAttachmentReport/reorg.{json,md}` |
 | `Content/Python/setup_pvp_weapon_assembly.py` | 生成 / 更新配件目录数据资产、调用构建器装配（`Basic` / `Tactical`）、逐项读回、spawn 冒烟断言 socket | `Saved/PVPAttachmentReport/report.{json,md}`、`report_tactical.{json,md}`、`assembly_builder.json`、`readback_builder.json` |
 | `Content/Python/verify_pvp_asset_layout.py` | 校验 `Actors` 20、`Animation/AnimBP` 5、`Data` 2、逻辑总数 81、旧路径零残留 | `Saved/PVPAssetReorgReport/verify.{json,md}` |
@@ -218,7 +220,7 @@ UnrealEditor-Cmd.exe "D:/UE/Unreal Projects/PVPDemo/PVPDemo.uproject" -run=Pytho
 
 | 变更 | 必须同步 |
 | --- | --- |
-| 武器组件默认值、挂点、Montage 名称变化 | 本文第 3.1 节 + `Equipment-Dev.md` 第 3 / 4 节 + `setup_pvp_weapon.py` 的读回项 |
+| 武器组件默认值、挂点、Montage 名称变化 | 本文第 3.1 节 + `Equipment-Dev.md` 第 3 / 4 节 + `setup_pvp_weapon.py` 的读回项（含 `AimedFireMontage`） |
 | 拾取 / 附着 / 丢弃行为变化 | 本文第 4 节 + `Equipment-Dev.md` 第 3 / 6 节 + `Equipment-Integration.md` 第 3 / 5 节 |
 | C++ 接口签名变化 | 本文第 3 节 + `Equipment-Integration.md` 第 4 / 7 节 |
 | 武器资产新增 / 改名 / 移动 | `Docs/Content-Structure.md` + `Content/Python/pvp_logic_layout.py` + 本文第 3 节 |

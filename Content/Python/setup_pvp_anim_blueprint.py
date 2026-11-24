@@ -38,6 +38,7 @@ SKELETON_PATH = '/Game/PVPDemo/Characters/Mannequins/Meshes/SKEL_PVP_Mannequin'
 PREVIEW_MESH_PATH = '/Game/PVPDemo/Characters/Mannequins/Meshes/SKM_PVP_FP_Manny_Simple'
 LOCOMOTION_DIR = '/Game/PVPDemo/Weapons/AssaultRifle/Animations/Character/FP/Locomotion'
 GROUND_BLENDSPACE_PATH = LOCOMOTION_DIR + '/BS_PVP_FP_AR_Locomotion_Standing'
+AIM_BLENDSPACE_PATH = LOCOMOTION_DIR + '/BS_PVP_FP_AR_Locomotion_Aimed'
 RUN_LOOP_PATH = LOCOMOTION_DIR + '/A_PVP_FP_AR_Run_F_Loop'
 JUMP_START_PATH = LOCOMOTION_DIR + '/A_PVP_FP_AR_Jump_Start'
 JUMP_FALLING_LOOP_PATH = LOCOMOTION_DIR + '/A_PVP_FP_AR_Jump_Falling_Loop'
@@ -53,6 +54,8 @@ state = {
     'parent_class': 'PVPAnimInstanceBase',
     'skeleton': SKELETON_PATH,
     'preview_mesh': PREVIEW_MESH_PATH,
+    'ground_blendspace': GROUND_BLENDSPACE_PATH,
+    'aim_blendspace': AIM_BLENDSPACE_PATH,
     'deleted_previous': False,
     'created': False,
     'compiled': False,
@@ -121,7 +124,8 @@ def remove_previous_asset():
     state['deleted_previous'] = True
 
 
-def build_asset(skeleton, preview_mesh, blend_space, run_loop, jump_start, jump_falling, jump_end):
+def build_asset(skeleton, preview_mesh, blend_space, aim_blend_space, run_loop,
+                jump_start, jump_falling, jump_end):
     os.makedirs(REPORT_DIR, exist_ok=True)
     log('calling UPVPAnimBlueprintBuilder for %s' % ASSET_PATH)
     blueprint = unreal.PVPAnimBlueprintBuilder.build_locomotion_anim_blueprint(
@@ -130,6 +134,7 @@ def build_asset(skeleton, preview_mesh, blend_space, run_loop, jump_start, jump_
         skeleton,
         preview_mesh,
         blend_space,
+        aim_blend_space,
         run_loop,
         jump_start,
         jump_falling,
@@ -183,6 +188,30 @@ def verify_asset(blueprint):
           report.get('parent_class') or 'None')
     check('builder.blendspace', (report.get('ground_blendspace') or '').startswith(GROUND_BLENDSPACE_PATH),
           report.get('ground_blendspace') or 'None')
+    check('builder.aim_blendspace', (report.get('aim_blendspace') or '').startswith(AIM_BLENDSPACE_PATH),
+          report.get('aim_blendspace') or 'None')
+
+    # The aimed set must share the direction plane of the standing set; the builder already refuses
+    # mismatching axes, these checks make the result visible in the report.
+    ground_axes = report.get('blend_axes') or []
+    aim_axes = report.get('aim_blend_axes') or []
+    check('graph.aim_blend_axis_count', report.get('aim_blend_axis_count') == 2,
+          '%s (expected 2)' % report.get('aim_blend_axis_count'))
+    axes_compatible = len(ground_axes) == len(aim_axes) and all(
+        abs(float(ground.get('min', 0.0)) - float(aim.get('min', 0.0))) < 0.01
+        and abs(float(ground.get('max', 0.0)) - float(aim.get('max', 0.0))) < 0.01
+        and ground.get('bound_variable') == aim.get('bound_variable')
+        for ground, aim in zip(ground_axes, aim_axes))
+    check('graph.aim_blend_axes_match', axes_compatible,
+          'ground=%s aim=%s' % (ground_axes, aim_axes))
+
+    aim_samples = [str(item.get('animation', '')) for item in (report.get('aim_blend_samples') or [])]
+    check('graph.aim_blend_idle_sample',
+          any('A_PVP_FP_AR_Idle_Loop_Aimed' in sample for sample in aim_samples),
+          ', '.join(aim_samples))
+    check('graph.aim_blend_walk_sample',
+          any('A_PVP_FP_AR_Walk_F_Loop_Aimed' in sample for sample in aim_samples),
+          ', '.join(aim_samples))
 
     generated_class = blueprint.generated_class()
     if generated_class is None:
@@ -226,6 +255,8 @@ def verify_asset(blueprint):
     for key in ('root_pose', 'state_machine_pose', 'montage_slot_source', 'montage_slot_pose',
                 'entry_to_ground',
                 'ground_blendspace_x', 'ground_blendspace_y', 'ground_run_blend',
+                'ground_standing_pose', 'ground_aim_blend',
+                'ground_aim_blendspace_x', 'ground_aim_blendspace_y', 'ground_aim_pose',
                 'ground_pose', 'jump_start_pose', 'falling_pose', 'land_pose',
                 'land_auto_rule'):
         check('wiring.%s' % key, bool(wiring.get(key)), key)
@@ -281,6 +312,7 @@ def run():
     skeleton = load_asset(SKELETON_PATH, unreal.Skeleton, 'skeleton')
     preview_mesh = load_asset(PREVIEW_MESH_PATH, unreal.SkeletalMesh, 'preview mesh')
     blend_space = load_asset(GROUND_BLENDSPACE_PATH, unreal.BlendSpace, 'ground blend space')
+    aim_blend_space = load_asset(AIM_BLENDSPACE_PATH, unreal.BlendSpace, 'aim blend space')
     run_loop = load_asset(RUN_LOOP_PATH, unreal.AnimSequence, 'run loop')
     jump_start = load_asset(JUMP_START_PATH, unreal.AnimSequence, 'jump start')
     jump_falling = load_asset(JUMP_FALLING_LOOP_PATH, unreal.AnimSequence, 'jump falling loop')
@@ -293,7 +325,8 @@ def run():
     if state['errors']:
         return
 
-    blueprint = build_asset(skeleton, preview_mesh, blend_space, run_loop, jump_start, jump_falling, jump_end)
+    blueprint = build_asset(skeleton, preview_mesh, blend_space, aim_blend_space, run_loop,
+                            jump_start, jump_falling, jump_end)
     blueprint = compile_and_save(blueprint)
     verify_asset(blueprint)
 

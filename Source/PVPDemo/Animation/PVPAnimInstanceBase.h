@@ -77,6 +77,10 @@ public:
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "PVP|Animation|Locomotion")
 	bool bIsRunning = false;
 
+	/** Mirrors APVPBaseCharacter::bIsAiming; drives the aimed locomotion blend in the AnimGraph. */
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "PVP|Animation|Locomotion")
+	bool bIsAiming = false;
+
 	/** True while the movement mode is walkable ground (Walking / NavWalking). */
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "PVP|Animation|Locomotion")
 	bool bIsOnGround = false;
@@ -116,6 +120,7 @@ private:
 	float SampledMaxWalkSpeed = 0.0f;
 	float SampledRunSpeed = 0.0f;
 	bool bSampledIsRunning = false;
+	bool bSampledIsAiming = false;
 	bool bSampledIsMovingOnGround = false;
 	bool bSampledIsFalling = false;
 	bool bHasValidSnapshot = false;

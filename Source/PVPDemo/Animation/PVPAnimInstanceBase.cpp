@@ -52,6 +52,7 @@ void UPVPAnimInstanceBase::NativeUpdateAnimation(float DeltaSeconds)
 		SampledMaxWalkSpeed = 0.0f;
 		SampledRunSpeed = 0.0f;
 		bSampledIsRunning = false;
+		bSampledIsAiming = false;
 		bSampledIsMovingOnGround = false;
 		bSampledIsFalling = false;
 		return;
@@ -63,6 +64,7 @@ void UPVPAnimInstanceBase::NativeUpdateAnimation(float DeltaSeconds)
 	SampledMaxWalkSpeed = CachedMovementComponent->MaxWalkSpeed;
 	SampledRunSpeed = CachedCharacter->RunSpeed;
 	bSampledIsRunning = CachedCharacter->bIsRunning;
+	bSampledIsAiming = CachedCharacter->bIsAiming;
 	bSampledIsMovingOnGround = CachedMovementComponent->IsMovingOnGround();
 	bSampledIsFalling = CachedMovementComponent->IsFalling();
 }
@@ -91,6 +93,7 @@ void UPVPAnimInstanceBase::NativeThreadSafeUpdateAnimation(float /*DeltaSeconds*
 		: 0.0f;
 
 	bIsRunning = bSampledIsRunning;
+	bIsAiming = bSampledIsAiming;
 	bIsOnGround = bSampledIsMovingOnGround;
 	bIsInAir = bSampledIsFalling;
 	bIsJumping = bIsInAir && SpeedZ > 0.0f;
@@ -107,6 +110,7 @@ void UPVPAnimInstanceBase::ResetAnimationState()
 	Direction = 0.0f;
 	bIsMoving = false;
 	bIsRunning = false;
+	bIsAiming = false;
 	bIsOnGround = false;
 	bIsInAir = false;
 	bIsJumping = false;

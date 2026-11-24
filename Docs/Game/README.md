@@ -3,7 +3,7 @@
 > 维度：会话与玩家入口（GameMode / PlayerController / 默认 IMC 注入）
 > 模块：Game
 > 适用工程：PVPDemo（UE 5.9）
-> 最后更新：2026-11-23
+> 最后更新：2026-11-24
 > 上游规范：`AGENTS.md`、`Docs/AI-Workflow.md`、`Docs/Source-Structure.md`、`Docs/Content-Structure.md`
 > 配套文档：`Docs/Game/Game-Dev.md`（开发流程与踩坑）、`Docs/Game/Game-Integration.md`（依赖与接口契约）
 
@@ -91,7 +91,7 @@
 | 4 | 生成玩家 | 引擎 | `PlayerControllerClass` / `DefaultPawnClass` 依 CDO 生效 |
 | 5 | `OnPossess` | `APVPPlayerController` | 记录实际 Pawn 类名与路径 |
 | 6 | 控制器 `BeginPlay` | `APVPPlayerController` | GameOnly 输入模式 → 清空并注入默认 IMC |
-| 7 | `SetupPlayerInputComponent` | `APVPBaseCharacter` | 按 Tag 绑定 4 个动作 / 6 条事件（见 `Docs/Character/README.md` 第 3.3 节） |
+| 7 | `SetupPlayerInputComponent` | `APVPBaseCharacter` | 按 Tag 绑定 6 个动作 / 9 条事件（见 `Docs/Character/README.md` 第 3.3 节） |
 
 ---
 
@@ -105,7 +105,7 @@ LogPVPGameMode: BP_PVPGameMode_C_0: StartPlay default_pawn=BP_PVPBaseCharacter_C
 LogPVPPlayerController: BP_PVPPlayerController_C_0: OnPossess pawn=BP_PVPBaseCharacter_C path=/Game/PVP/Maps/L_PVP_Showcase...
 LogPVPPlayerController: BP_PVPPlayerController_C_0: applied 1 default input mapping context(s)
 LogPVPPlayerController: BP_PVPPlayerController_C_0: BeginPlay (GameOnly input mode)
-LogPVPBaseCharacter: BP_PVPBaseCharacter_C_0: bound 6/6 native input bindings (config=DA_PVP_InputConfig)
+LogPVPBaseCharacter: BP_PVPBaseCharacter_C_0: bound 9/9 native input bindings (config=DA_PVP_InputConfig)
 ```
 
 | 日志 | 含义 |

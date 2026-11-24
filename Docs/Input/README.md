@@ -56,28 +56,32 @@
 
 ## 3. 已实现能力速查（权威表）
 
-当前代码已绑定的动作共 **4 个**，共 **6 条绑定事件**：
+当前代码已绑定的动作共 **6 个**，共 **9 条绑定事件**：
 
 | 语义 | InputTag | InputAction | ValueType | IMC 键位 | 绑定事件 | 回调函数 | 行为 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 平面移动 | `InputTag.Move` | `IA_PVP_Move` | Axis2D | W / A / S / D | Triggered | `APVPBaseCharacter::Input_Move` | 用 ControlRotation 的 **Yaw** 构造平面基向量，`AddMovementInput` 前后 + 左右；Pitch 不参与，抬头低头不影响移动平面 |
 | 视角 | `InputTag.Look` | `IA_PVP_Look` | Axis2D | Mouse2D + **Negate(Y)** | Triggered | `APVPBaseCharacter::Input_Look` | `AddControllerYawInput(X)` + `AddControllerPitchInput(Y)`，C++ 不取反；相机通过 `bUsePawnControlRotation` 消费 Controller 旋转 |
 | 跳跃 | `InputTag.Jump` | `IA_PVP_Jump` | Boolean | SpaceBar | Started / Completed | `Input_JumpStarted` / `Input_JumpCompleted` | `Jump()` / `StopJumping()` |
-| 按住跑 | `InputTag.Run` | `IA_PVP_Run` | Boolean | LeftShift | Started / Completed | `Input_RunStarted` / `Input_RunCompleted` | `SetRunning` 切换 `MaxWalkSpeed`（`WalkSpeed` 300 / `RunSpeed` 600，可调）并维护 `bIsRunning` |
+| 按住跑 | `InputTag.Run` | `IA_PVP_Run` | Boolean | LeftShift | Started / Completed | `Input_RunStarted` / `Input_RunCompleted` | `SetRunning` 维护 `bIsRunning` 并应用 `MaxWalkSpeed`（`WalkSpeed` 300 / `RunSpeed` 600，可调；瞄准期间固定走速） |
+| 按住瞄准 | `InputTag.Aim` | `IA_PVP_ADS` | Boolean | RightMouseButton | Started / Completed | `Input_AimStarted` / `Input_AimCompleted` | 有武器时 `SetAiming(true/false)`：切瞄准姿态、FOV 平滑 100 → 70、瞄准期间走速；空手忽略 |
+| 射击 | `InputTag.Fire` | `IA_PVP_Fire` | Boolean | LeftMouseButton | Started | `Input_FireStarted` | 有武器时按 `bIsAiming` 播放腰射 / 瞄准版成对 Fire Montage；空手忽略 |
 
 **代码位置**：
 
 | 项 | 位置 |
 | --- | --- |
-| Tag 定义 | `Source/PVPDemo/GAS/PVPGameplayTags.h/.cpp`（`PVPGameplayTags::InputTag_Move/Look/Jump/Run`） |
+| Tag 定义 | `Source/PVPDemo/GAS/PVPGameplayTags.h/.cpp`（`PVPGameplayTags::InputTag_Move/Look/Jump/Run/Aim/Fire`） |
 | 绑定组件 | `Source/PVPDemo/Input/PVPInputComponent.h`（`UPVPInputComponent::BindNativeAction`） |
-| 配置类型 | `Source/PVPDemo/Input/PVPInputConfig.h/.cpp`（`UPVPInputConfig::FindNativeInputActionForTag` / `SetNativeInputActionByIndex`） |
+| 配置类型 | `Source/PVPDemo/Input/PVPInputConfig.h/.cpp`（`UPVPInputConfig::FindNativeInputActionForTag` / `SetNativeInputActionByIndex` / `EnsureNativeInputActionSlots`） |
 | 绑定点 | `APVPBaseCharacter::SetupPlayerInputComponent`（`Source/PVPDemo/Character/PVPBaseCharacter.cpp`） |
-| 回调实现 | 同文件 `Input_Move` / `Input_Look` / `Input_JumpStarted` / `Input_JumpCompleted` / `Input_RunStarted` / `Input_RunCompleted` / `SetRunning` |
+| 回调实现 | 同文件 `Input_Move` / `Input_Look` / `Input_JumpStarted` / `Input_JumpCompleted` / `Input_RunStarted` / `Input_RunCompleted` / `Input_AimStarted` / `Input_AimCompleted` / `Input_FireStarted` / `SetRunning` / `SetAiming` |
 | InputComponent 类型覆盖 | `APVPBaseCharacter` 构造函数：`OverrideInputComponentClass = UPVPInputComponent::StaticClass()` |
 | IMC 注入 | `APVPPlayerController` 构造函数 + `BeginPlay`（`Source/PVPDemo/Game/PVPPlayerController.cpp`） |
 
-**未绑定的输入动作**：`IA_PVP_Fire`、`IA_PVP_ADS`、`IA_PVP_Crouch`、`IA_PVP_Sprint` 等其余 IA 已在 `IMC_PVP_Default` 中有键位映射，但 `APVPBaseCharacter` 未绑定，属于 GAS / 武器 / 相机等后续阶段。
+**未绑定的输入动作**：`IA_PVP_Crouch`、`IA_PVP_Sprint`、`IA_PVP_Reload_*`、`IA_PVP_Melee` 等其余 IA 已在 `IMC_PVP_Default` 中有键位映射，但 `APVPBaseCharacter` 未绑定，属于 GAS / 武器玩法等后续阶段。
+
+**输入配置槽位**：`DA_PVP_InputConfig` 由 C++ 构造函数按 Move / Look / Jump / Run / Aim / Fire 顺序 seed 6 个 Tag 槽；升级前保存的资产只有 4 槽，`setup_pvp_input.py` 调用 `EnsureNativeInputActionSlots` 原地补齐，不删除被 `BP_PVPBaseCharacter` CDO 引用的数据资产。
 
 ---
 
@@ -88,12 +92,12 @@
 | 构造函数 | `APVPBaseCharacter` | 指定 `OverrideInputComponentClass`，初始 `MaxWalkSpeed = WalkSpeed`，`bIsRunning = false` |
 | 构造函数 | `APVPPlayerController` | `ConstructorHelpers::FObjectFinder` 加载 `/Game/PVP/Input/IMC_PVP_Default.IMC_PVP_Default`，填入 `DefaultMappingContexts`（Priority 0）；缺失只告警不崩 |
 | `BeginPlay` | `APVPPlayerController` | `SetInputMode(FInputModeGameOnly())` → 取 `UEnhancedInputLocalPlayerSubsystem` → `ClearAllMappings()` → 按优先级 `AddMappingContext` |
-| Possess 后 | `APVPBaseCharacter` | `SetupPlayerInputComponent` 中按 Tag 绑定 4 个动作 / 6 个事件；绑定只执行一次 |
+| Possess 后 | `APVPBaseCharacter` | `SetupPlayerInputComponent` 中按 Tag 绑定 6 个动作 / 9 个事件；绑定只执行一次 |
 
 **关键日志**：
 
 ```text
-LogPVPBaseCharacter: ... bound 6/6 native input bindings (config=DA_PVP_InputConfig)
+LogPVPBaseCharacter: ... bound 9/9 native input bindings (config=DA_PVP_InputConfig)
 LogPVPPlayerController: ... applied 1 default input mapping context(s)
 ```
 
@@ -103,7 +107,7 @@ LogPVPPlayerController: ... applied 1 default input mapping context(s)
 
 ## 5. 未实现能力与扩展方向
 
-- 其余 `IA_PVP_*`（Fire / ADS / Crouch / Sprint 等）未在角色上绑定，留给 GAS / 武器 / 相机阶段。
+- 其余 `IA_PVP_*`（Crouch / Sprint / Reload / Melee 等）未在角色上绑定，留给 GAS / 武器玩法阶段。
 - GAS 技能输入尚未设计，建议扩展为 `InputTag.Ability.<Skill>`，不要复用原生动作 Tag。
 - 未接 Enhanced Input User Settings / 按键重绑定，`DefaultMappingContexts` 未注册到用户设置。
 - 当前 IMC 只配置键鼠，无 Gamepad 映射。

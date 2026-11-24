@@ -9,6 +9,7 @@
 
 class UAnimBlueprint;
 class UAnimInstance;
+class UAnimMontage;
 class UAnimSequence;
 class UBlendSpace;
 class USkeletalMesh;
@@ -21,10 +22,12 @@ class USkeleton;
  * not reflected, and the ue5-automation bridge only reads AnimBlueprints), so the graph is built in
  * C++ and driven from Content/Python/setup_pvp_anim_blueprint.py through a commandlet.
  *
- * The generated graph is fixed to the current Move / Run / Jump scope:
+ * The generated graph is fixed to the current Move / Run / Jump / Aim scope:
  *
  *   Ground    : BS_PVP_FP_AR_Locomotion_Standing (Speed / Direction) blended with
- *               A_PVP_FP_AR_Run_F_Loop by "bIsRunning AND bIsMoving"
+ *               A_PVP_FP_AR_Run_F_Loop by "bIsRunning AND bIsMoving", then blended with
+ *               BS_PVP_FP_AR_Locomotion_Aimed by "bIsAiming" (aim pose on BlendPose_0 because
+ *               UAnimNode_BlendListByBool selects index 0 for bActiveValue=true)
  *   JumpStart : A_PVP_FP_AR_Jump_Start
  *   Falling   : A_PVP_FP_AR_Jump_Falling_Loop
  *   Land      : A_PVP_FP_AR_Jump_End, auto transition back to Ground when it ends
@@ -49,6 +52,7 @@ public:
 	 * @param Skeleton          Target skeleton, shared by every animation asset.
 	 * @param PreviewMesh       Preview skeletal mesh for Persona.
 	 * @param GroundBlendSpace  Idle / Walk ground blend space.
+	 * @param AimBlendSpace     Aimed idle / walk ground blend space (must share the ground axes).
 	 * @param RunLoop           Run forward loop sequence.
 	 * @param JumpStart         Jump start sequence (single shot).
 	 * @param JumpFallingLoop   Falling loop sequence.
@@ -62,6 +66,7 @@ public:
 		USkeleton* Skeleton,
 		USkeletalMesh* PreviewMesh,
 		UBlendSpace* GroundBlendSpace,
+		UBlendSpace* AimBlendSpace,
 		UAnimSequence* RunLoop,
 		UAnimSequence* JumpStart,
 		UAnimSequence* JumpFallingLoop,
@@ -97,6 +102,23 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "PVP|Animation")
 	static bool EnsureMontageSlot(
 		const FString& AnimBlueprintPath,
+		FName MontageSlotName,
+		const FString& ReportPath);
+
+	/**
+	 * Creates a single-track montage asset from an AnimSequence (UAnimMontageFactory), used for the
+	 * aimed fire montage that was authored only as a sequence. The montage is written into the
+	 * requested slot (DefaultSlot when the animation blueprints expose it), gets a "Default" section
+	 * starting at 0 and the preview mesh, then the builder writes a JSON read-back report.
+	 *
+	 * The target asset must not exist yet (the Python driver removes the previous generated asset).
+	 */
+	UFUNCTION(BlueprintCallable, Category = "PVP|Animation")
+	static UAnimMontage* BuildMontageFromSequence(
+		const FString& AssetPath,
+		UAnimSequence* SourceSequence,
+		USkeleton* Skeleton,
+		USkeletalMesh* PreviewMesh,
 		FName MontageSlotName,
 		const FString& ReportPath);
 };

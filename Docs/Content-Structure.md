@@ -207,7 +207,7 @@ Content/PVP/                          81   自有逻辑资产根
 | `Materials/` | 12 | 枪身与配件的材质实例（`MI_PVP_AR_*`、附件 `ATT_*`） |
 | `Meshes/` | 7 | 枪身本体 `SK_PVP_AR` / `SKEL_PVP_AR` / `PHYS_PVP_AR`；非装配件保留原路径：`SM_PVP_AR_Bullet`、`SM_PVP_AR_Bullet_Casing`、`SM_PVP_AR_GunCase`、`SM_PVP_AR_GunCase_Lid`（被 `L_PVP_Showcase` 引用，移动会牵连关卡重存） |
 | `Textures/` | 31 | 枪身各部件与配件的基础色（D）、法线（N）、ORM 贴图 |
-| `Animations/Character/FP/` | 89 | 第一人称角色持枪动画，细分为 5 类（见下表） |
+| `Animations/Character/FP/` | 90 | 第一人称角色持枪动画，细分为 5 类（见下表）；含瞄准射击 Montage `AM_PVP_FP_AR_Fire_Aimed`（本轮由 `A_PVP_FP_AR_Fire_Aimed` 生成） |
 | `Animations/Character/TP/` | 56 | 第三人称角色持枪动画，细分为 5 类（见下表） |
 | `Animations/Weapon/Common/` | 3 | 武器共用动画：弹匣耗尽、开火模式状态、参考姿势 |
 | `Animations/Weapon/FP/` | 22 | 第一人称武器本体动画蒙太奇（开火、换弹、排障、检视、装备等） |
@@ -242,7 +242,7 @@ Content/PVP/                          81   自有逻辑资产根
 | `Game/` | 2 | `BP_PVPGameMode`（默认 Pawn 指向 `BP_PVPBaseCharacter`、玩家控制器指向 `BP_PVPPlayerController`）、`BP_PVPPlayerController`（继承 `APVPPlayerController`） |
 | `Maps/` | 1 | `L_PVP_Showcase`：由第三方演示关卡复制而来的工程自有地图；无第三方角色实例，出生点为 `PlayerStart`，其余 Actor 全部保留且类引用改指向自有副本，WorldSettings 覆盖为 `BP_PVPGameMode` |
 | `Actors/` | 20 | 19 个由第三方逻辑资产复制而来的 Actor 蓝图自有副本（墙体框架 7 个、施工灯基类、信息板、武器 / 弹匣 / 附件 / 配置、物理对象与注射器），加 1 个本轮新建的 `BP_PVP_Weapon_AR`（父类 `APVPWeaponActor`，配置 AR 网格 / 武器 ABP / 拾取半径 / 成对 Montage）。只放 Actor 蓝图；动画蓝图、动画通知、控件蓝图、枚举与结构体已迁出 |
-| `Input/` | 31 | 29 个 `IA_PVP_*` 输入动作、`IMC_PVP_Default` 输入映射与 `DA_PVP_InputConfig` 输入配置数据资产。`DA_PVP_InputConfig` 把 `InputTag.Move/Look/Jump/Run` 映射到 4 个 IA 并挂到 `BP_PVPBaseCharacter` CDO；IMC 由 `APVPPlayerController` 在代码中默认添加。`IA_PVP_Look` 的 `Mouse2D` 映射带 **Negate(Y)**（俯仰方向修正，勿删除，详见 `Docs/Input/Input-Dev.md` 踩坑 1） |
+| `Input/` | 31 | 29 个 `IA_PVP_*` 输入动作、`IMC_PVP_Default` 输入映射与 `DA_PVP_InputConfig` 输入配置数据资产。`DA_PVP_InputConfig` 把 `InputTag.Move/Look/Jump/Run/Aim/Fire` 映射到 6 个 IA 并挂到 `BP_PVPBaseCharacter` CDO；IMC 由 `APVPPlayerController` 在代码中默认添加。`IA_PVP_Look` 的 `Mouse2D` 映射带 **Negate(Y)**（俯仰方向修正，勿删除，详见 `Docs/Input/Input-Dev.md` 踩坑 1） |
 | `Data/` | 2 | `DT_PVP_TextStyle` 文本样式数据表（UI 蓝图依赖）、`DA_PVP_WeaponAttachmentCatalog` 配件分类目录（8 个槽位定义 + `Basic` / `Tactical` 两套预设，被 `BP_PVP_Weapon_AR` 的 `AttachmentCatalog` 引用） |
 | `Types/` | 5 | 4 个枚举（`E_PVP_CameraPerspectives`、`E_PVP_FireMode`、`E_PVP_GripAttachment`、`E_PVP_Stance`）与 `S_PVP_SpringData` 弹簧参数结构体；被角色动画蓝图、角色 / 武器蓝图与控件蓝图引用 |
 | `UI/` | 2 | `WBP_PVP_BodycamOverlay`、`WBP_PVP_Demo` 两个控件蓝图（演示 HUD）。原 `Actors/` 下的同名重复副本已删除，此处为唯一一份，被 `BP_PVP_BaseCharacter` 引用 |

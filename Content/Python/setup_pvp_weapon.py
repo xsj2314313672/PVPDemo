@@ -8,14 +8,16 @@ The AnimGraph node creation for the weapon AnimBlueprint lives in the editor C++
 (UPVPAnimBlueprintBuilder::BuildWeaponAnimBlueprint); this script owns the asset lifecycle:
 
 1. validate the migrated AR skeleton / mesh / reference pose and the paired montages;
-2. delete and rebuild /Game/PVP/Animation/AnimBP/ABP_PVP_FP_Weapon_AR
+2. create AM_PVP_FP_AR_Fire_Aimed from A_PVP_FP_AR_Fire_Aimed (single DefaultSlot track), used while
+   the character is aiming;
+3. delete and rebuild /Game/PVP/Animation/AnimBP/ABP_PVP_FP_Weapon_AR
    (SequencePlayer(A_PVP_WEP_AR_Reference) -> DefaultSlot -> Root);
-3. insert DefaultSlot into the existing ABP_PVP_FP_Locomotion in place (never delete it, so the
+4. insert DefaultSlot into the existing ABP_PVP_FP_Locomotion in place (never delete it, so the
    BP_PVPBaseCharacter Mesh AnimClass override survives);
-4. create / update /Game/PVP/Actors/BP_PVP_Weapon_AR and set its class defaults (mesh, anim class,
-   sockets, pickup radius, paired Equip / Fire / Reload montages);
-5. place exactly one tagged pickup near the PlayerStart in /Game/PVP/Maps/L_PVP_Showcase;
-6. read everything back and write Saved/PVPWeaponReport/report.{json,md}.
+5. create / update /Game/PVP/Actors/BP_PVP_Weapon_AR and set its class defaults (mesh, anim class,
+   sockets, pickup radius, paired Equip / Fire / AimedFire / Reload montages);
+6. place exactly one tagged pickup near the PlayerStart in /Game/PVP/Maps/L_PVP_Showcase;
+7. read everything back and write Saved/PVPWeaponReport/report.{json,md}.
 
 The weapon blueprint uses actor-level configuration properties applied by APVPWeaponActor's
 OnConstruction; the script never edits the inherited Mesh component templates of BP_PVPBaseCharacter.
@@ -51,10 +53,15 @@ WEAPON_MESH_PATH = '/Game/PVPDemo/Weapons/AssaultRifle/Meshes/SK_PVP_AR'
 WEAPON_REFERENCE_PATH = \
     '/Game/PVPDemo/Weapons/AssaultRifle/Animations/Weapon/Common/A_PVP_WEP_AR_Reference'
 
+CHARACTER_SKELETON_PATH = '/Game/PVPDemo/Characters/Mannequins/Meshes/SKEL_PVP_Mannequin'
+CHARACTER_MESH_PATH = '/Game/PVPDemo/Characters/Mannequins/Meshes/SKM_PVP_FP_Manny_Simple'
+
 CHARACTER_MONTAGE_DIR = '/Game/PVPDemo/Weapons/AssaultRifle/Animations/Character/FP'
 WEAPON_MONTAGE_DIR = '/Game/PVPDemo/Weapons/AssaultRifle/Animations/Weapon/FP'
 CHARACTER_EQUIP_PATH = CHARACTER_MONTAGE_DIR + '/Transitions/AM_PVP_FP_AR_Equip'
 CHARACTER_FIRE_PATH = CHARACTER_MONTAGE_DIR + '/Combat/AM_PVP_FP_AR_Fire_Auto'
+CHARACTER_AIMED_FIRE_SEQUENCE_PATH = CHARACTER_MONTAGE_DIR + '/Combat/A_PVP_FP_AR_Fire_Aimed'
+CHARACTER_AIMED_FIRE_PATH = CHARACTER_MONTAGE_DIR + '/Combat/AM_PVP_FP_AR_Fire_Aimed'
 CHARACTER_RELOAD_PATH = CHARACTER_MONTAGE_DIR + '/Combat/AM_PVP_FP_AR_Reload'
 WEAPON_EQUIP_PATH = WEAPON_MONTAGE_DIR + '/AM_PVP_FP_WEP_AR_Equip'
 WEAPON_FIRE_PATH = WEAPON_MONTAGE_DIR + '/AM_PVP_FP_WEP_AR_Fire'
@@ -71,12 +78,20 @@ REPORT_JSON = REPORT_DIR + '/report.json'
 REPORT_MD = REPORT_DIR + '/report.md'
 WEAPON_ABP_BUILDER_JSON = REPORT_DIR + '/weapon_abp_builder.json'
 SLOT_BUILDER_JSON = REPORT_DIR + '/slot_builder.json'
+AIMED_FIRE_BUILDER_JSON = REPORT_DIR + '/aimed_fire_montage_builder.json'
 
 state = {
     'weapon_abp_path': WEAPON_ABP_PATH,
     'weapon_bp_path': WEAPON_BP_PATH,
     'locomotion_abp_path': LOCOMOTION_ABP_PATH,
+    'aimed_fire_montage_path': CHARACTER_AIMED_FIRE_PATH,
     'map_path': MAP_PATH,
+    'aimed_fire_montage': {
+        'deleted_previous': False,
+        'created': False,
+        'saved': False,
+        'builder_report': None,
+    },
     'weapon_abp': {
         'deleted_previous': False,
         'created': False,
@@ -224,8 +239,12 @@ def load_dependencies():
         'skeleton': load_asset(WEAPON_SKELETON_PATH, unreal.Skeleton, 'weapon skeleton'),
         'weapon_mesh': load_asset(WEAPON_MESH_PATH, unreal.SkeletalMesh, 'weapon mesh'),
         'reference_pose': load_asset(WEAPON_REFERENCE_PATH, unreal.AnimSequence, 'weapon reference pose'),
+        'character_skeleton': load_asset(CHARACTER_SKELETON_PATH, unreal.Skeleton, 'character skeleton'),
+        'character_mesh': load_asset(CHARACTER_MESH_PATH, unreal.SkeletalMesh, 'character mesh'),
         'character_equip': load_asset(CHARACTER_EQUIP_PATH, unreal.AnimMontage, 'character equip montage'),
         'character_fire': load_asset(CHARACTER_FIRE_PATH, unreal.AnimMontage, 'character fire montage'),
+        'character_aimed_fire_sequence': load_asset(
+            CHARACTER_AIMED_FIRE_SEQUENCE_PATH, unreal.AnimSequence, 'character aimed fire sequence'),
         'character_reload': load_asset(CHARACTER_RELOAD_PATH, unreal.AnimMontage, 'character reload montage'),
         'weapon_equip': load_asset(WEAPON_EQUIP_PATH, unreal.AnimMontage, 'weapon equip montage'),
         'weapon_fire': load_asset(WEAPON_FIRE_PATH, unreal.AnimMontage, 'weapon fire montage'),
@@ -237,6 +256,68 @@ def load_dependencies():
     else:
         deps['character_bp'] = unreal.EditorAssetLibrary.load_asset(CHARACTER_BP_PATH)
     return deps
+
+
+def build_aimed_fire_montage(deps):
+    """Bake A_PVP_FP_AR_Fire_Aimed into the DefaultSlot montage used while aiming."""
+    sequence = deps.get('character_aimed_fire_sequence')
+    skeleton = deps.get('character_skeleton')
+    preview_mesh = deps.get('character_mesh')
+    if sequence is None or skeleton is None or preview_mesh is None:
+        error('cannot build %s: missing sequence / character skeleton / preview mesh'
+              % CHARACTER_AIMED_FIRE_PATH)
+        return None
+
+    if not remove_previous_asset(CHARACTER_AIMED_FIRE_PATH):
+        return None
+    state['aimed_fire_montage']['deleted_previous'] = True
+
+    os.makedirs(REPORT_DIR, exist_ok=True)
+    log('calling UPVPAnimBlueprintBuilder.build_montage_from_sequence for %s'
+        % CHARACTER_AIMED_FIRE_PATH)
+    montage = unreal.PVPAnimBlueprintBuilder.build_montage_from_sequence(
+        CHARACTER_AIMED_FIRE_PATH,
+        sequence,
+        skeleton,
+        preview_mesh,
+        DEFAULT_MONTAGE_SLOT,
+        AIMED_FIRE_BUILDER_JSON,
+    )
+    if montage is None:
+        error('build_montage_from_sequence returned None')
+        return None
+    state['aimed_fire_montage']['created'] = True
+
+    if not unreal.EditorAssetLibrary.save_loaded_asset(montage, only_if_is_dirty=False):
+        error('failed to save %s' % CHARACTER_AIMED_FIRE_PATH)
+    state['aimed_fire_montage']['saved'] = \
+        unreal.EditorAssetLibrary.does_asset_exist(CHARACTER_AIMED_FIRE_PATH)
+
+    report = read_json(AIMED_FIRE_BUILDER_JSON) or {}
+    state['aimed_fire_montage']['builder_report'] = report
+    check('aimed_fire.builder_source',
+          (report.get('source_sequence') or '').startswith(CHARACTER_AIMED_FIRE_SEQUENCE_PATH),
+          report.get('source_sequence') or 'None')
+    check('aimed_fire.builder_slot', report.get('montage_slot') == DEFAULT_MONTAGE_SLOT,
+          report.get('montage_slot') or 'None')
+    check('aimed_fire.slot_matches', bool(report.get('slot_matches')), 'slot_matches')
+    check('aimed_fire.source_segment', bool(report.get('source_segment_matches')),
+          'source_segment_matches')
+    check('aimed_fire.skeleton', bool(report.get('skeleton_matches')), 'skeleton_matches')
+    check('aimed_fire.segments', int(report.get('segment_count') or 0) >= 1,
+          report.get('segment_count'))
+    check('aimed_fire.sections', int(report.get('section_count') or 0) >= 1,
+          report.get('section_count'))
+
+    loaded = load_asset(CHARACTER_AIMED_FIRE_PATH, unreal.AnimMontage, 'aimed fire montage')
+    if loaded is not None:
+        slot_tracks = get_property(loaded, 'slot_anim_tracks')
+        if slot_tracks:
+            slot_name = str(get_property(slot_tracks[0], 'slot_name'))
+            check('aimed_fire.runtime_slot', slot_name == DEFAULT_MONTAGE_SLOT, slot_name)
+        else:
+            check('aimed_fire.runtime_slot', False, 'no slot tracks after reload')
+    return loaded
 
 
 def build_weapon_abp(deps):
@@ -359,7 +440,7 @@ def is_weapon_blueprint_default(cdo, weapon_class):
         return False
 
 
-def ensure_weapon_blueprint(deps, weapon_abp):
+def ensure_weapon_blueprint(deps, weapon_abp, aimed_fire_montage):
     weapon_class = get_weapon_actor_class()
     created = False
 
@@ -411,6 +492,9 @@ def ensure_weapon_blueprint(deps, weapon_abp):
                  'equip_montage')
     set_property(cdo, make_montage_pair(deps['character_fire'], deps['weapon_fire']),
                  'fire_montage')
+    # Aimed fire reuses the weapon-side fire montage and swaps only the character-side animation.
+    set_property(cdo, make_montage_pair(aimed_fire_montage, deps['weapon_fire']),
+                 'aimed_fire_montage')
     set_property(cdo, make_montage_pair(deps['character_reload'], deps['weapon_reload']),
                  'reload_montage')
 
@@ -470,6 +554,7 @@ def ensure_weapon_blueprint(deps, weapon_abp):
     expected_pairs = (
         ('equip_montage', deps['character_equip'], deps['weapon_equip']),
         ('fire_montage', deps['character_fire'], deps['weapon_fire']),
+        ('aimed_fire_montage', aimed_fire_montage, deps['weapon_fire']),
         ('reload_montage', deps['character_reload'], deps['weapon_reload']),
     )
     for prop_name, expected_character, expected_weapon in expected_pairs:
@@ -568,12 +653,46 @@ def place_weapon_pickup(weapon_bp):
               pickups[0].get_class().get_name())
 
 
+def read_character_anim_class():
+    """Read the Mesh AnimClass from the BP_PVPBaseCharacter CDO (the live override, not a string)."""
+    try:
+        character_bp = unreal.EditorAssetLibrary.load_asset(CHARACTER_BP_PATH)
+        if character_bp is None:
+            return None
+        generated_class = character_bp.generated_class()
+        if generated_class is None:
+            unreal.BlueprintEditorLibrary.compile_blueprint(character_bp)
+            generated_class = character_bp.generated_class()
+        if generated_class is None:
+            return None
+        cdo = unreal.get_default_object(generated_class)
+        mesh = cdo.get_editor_property('mesh') if cdo else None
+        if mesh is None:
+            return None
+        anim_class = None
+        try:
+            anim_class = mesh.get_anim_instance_class()
+        except Exception:  # noqa: BLE001
+            anim_class = get_property(mesh, 'anim_class', 'anim_instance_class')
+        return path_of(anim_class)
+    except Exception as exc:  # noqa: BLE001
+        warn('cannot read BP_PVPBaseCharacter CDO Mesh AnimClass: %s' % exc)
+        return None
+
+
 def verify_character_anim_override():
-    """The locomotion ABP is edited in place, so the character blueprint must still reference it."""
+    """The locomotion ABP is edited / rebuilt, so the character blueprint must still reference it."""
     file_path = asset_file_path(CHARACTER_BP_PATH)
     if not os.path.exists(file_path):
         error('character blueprint file missing: %s' % file_path)
         return
+
+    anim_class_path = read_character_anim_class()
+    if anim_class_path is None:
+        warn('CDO Mesh AnimClass is unavailable; falling back to the package string scan')
+    else:
+        check('character.locomotion_anim_class',
+              anim_class_path.startswith(LOCOMOTION_ABP_PATH), anim_class_path)
 
     with open(file_path, 'rb') as handle:
         data = handle.read()
@@ -596,6 +715,7 @@ def write_markdown():
         '- weapon blueprint: `%s`' % WEAPON_BP_PATH,
         '- weapon AnimBlueprint: `%s`' % WEAPON_ABP_PATH,
         '- locomotion AnimBlueprint: `%s`' % LOCOMOTION_ABP_PATH,
+        '- aimed fire montage: `%s`' % CHARACTER_AIMED_FIRE_PATH,
         '- map: `%s`' % MAP_PATH,
         '- pickup label: `%s`' % PICKUP_LABEL,
         '',
@@ -624,6 +744,12 @@ def write_markdown():
         '```',
         '',
         '## Builder reports',
+        '',
+        '### Aimed fire montage',
+        '',
+        '```json',
+        json.dumps(state['aimed_fire_montage']['builder_report'], indent=2, ensure_ascii=False),
+        '```',
         '',
         '### Weapon AnimBlueprint',
         '',
@@ -661,13 +787,17 @@ def run():
     if state['errors']:
         return
 
+    aimed_fire_montage = build_aimed_fire_montage(deps)
+    if aimed_fire_montage is None:
+        return
+
     weapon_abp = build_weapon_abp(deps)
     if weapon_abp is None:
         return
 
     ensure_character_slot()
 
-    weapon_bp = ensure_weapon_blueprint(deps, weapon_abp)
+    weapon_bp = ensure_weapon_blueprint(deps, weapon_abp, aimed_fire_montage)
     if weapon_bp is None:
         return
 

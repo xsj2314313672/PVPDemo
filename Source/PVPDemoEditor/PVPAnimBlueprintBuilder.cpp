@@ -3,6 +3,7 @@
 #include "PVPAnimBlueprintBuilder.h"
 
 #include "Animation/AnimBlueprint.h"
+#include "Animation/AnimMontage.h"
 #include "Animation/AnimSequence.h"
 #include "Animation/BlendSpace.h"
 #include "Animation/BlendSpace1D.h"
@@ -29,6 +30,7 @@
 #include "EdGraphSchema_K2.h"
 #include "Engine/SkeletalMesh.h"
 #include "Factories/AnimBlueprintFactory.h"
+#include "Factories/AnimMontageFactory.h"
 #include "HAL/FileManager.h"
 #include "IAssetTools.h"
 #include "K2Node_CallFunction.h"
@@ -443,6 +445,7 @@ UAnimBlueprint* UPVPAnimBlueprintBuilder::BuildLocomotionAnimBlueprint(
 	USkeleton* Skeleton,
 	USkeletalMesh* PreviewMesh,
 	UBlendSpace* GroundBlendSpace,
+	UBlendSpace* AimBlendSpace,
 	UAnimSequence* RunLoop,
 	UAnimSequence* JumpStart,
 	UAnimSequence* JumpFallingLoop,
@@ -454,7 +457,8 @@ UAnimBlueprint* UPVPAnimBlueprintBuilder::BuildLocomotionAnimBlueprint(
 		UE_LOG(LogPVPAnimBlueprintBuilder, Error, TEXT("invalid AnimInstance parent class"));
 		return nullptr;
 	}
-	if (!Skeleton || !PreviewMesh || !GroundBlendSpace || !RunLoop || !JumpStart || !JumpFallingLoop || !JumpEnd)
+	if (!Skeleton || !PreviewMesh || !GroundBlendSpace || !AimBlendSpace
+		|| !RunLoop || !JumpStart || !JumpFallingLoop || !JumpEnd)
 	{
 		UE_LOG(LogPVPAnimBlueprintBuilder, Error, TEXT("missing skeleton / mesh / animation dependency"));
 		return nullptr;
@@ -473,6 +477,7 @@ UAnimBlueprint* UPVPAnimBlueprintBuilder::BuildLocomotionAnimBlueprint(
 	}
 
 	if (GroundBlendSpace->GetSkeleton() != Skeleton
+		|| AimBlendSpace->GetSkeleton() != Skeleton
 		|| RunLoop->GetSkeleton() != Skeleton
 		|| JumpStart->GetSkeleton() != Skeleton
 		|| JumpFallingLoop->GetSkeleton() != Skeleton
@@ -601,6 +606,27 @@ UAnimBlueprint* UPVPAnimBlueprintBuilder::BuildLocomotionAnimBlueprint(
 		return nullptr;
 	}
 
+	// Aim: a second blend space using the same direction plane, selected by bIsAiming.
+	// UAnimNode_BlendListByBool selects index 0 when bActiveValue is true, so the aim pose goes to
+	// BlendPose_0 and the standing / run result to BlendPose_1.
+	UAnimGraphNode_BlendSpacePlayer* AimBlendSpaceNode = CreateBlendSpacePlayer(
+		GroundGraph, AimBlendSpace, -620, 460, TEXT("aim blend space"));
+	UAnimGraphNode_BlendListByBool* AimBlendNode = CreateBlendListByBool(GroundGraph, 160, 0);
+	if (!AimBlendSpaceNode || !AimBlendNode)
+	{
+		UE_LOG(LogPVPAnimBlueprintBuilder, Error, TEXT("failed to create aim blend nodes"));
+		return nullptr;
+	}
+	// BlendTime_0 applies when entering the aim pose, BlendTime_1 when returning to hip fire.
+	if (UEdGraphPin* AimBlendTime0 = AimBlendNode->FindPin(TEXT("BlendTime_0"), EGPD_Input))
+	{
+		AimBlendTime0->DefaultValue = TEXT("0.15");
+	}
+	if (UEdGraphPin* AimBlendTime1 = AimBlendNode->FindPin(TEXT("BlendTime_1"), EGPD_Input))
+	{
+		AimBlendTime1->DefaultValue = TEXT("0.20");
+	}
+
 	const int32 AxisCount = GroundBlendSpace->IsA<UBlendSpace1D>() ? 1 : 2;
 	TArray<FBlendAxisBinding> AxisBindings;
 	AxisBindings.Reserve(AxisCount);
@@ -615,6 +641,35 @@ UAnimBlueprint* UPVPAnimBlueprintBuilder::BuildLocomotionAnimBlueprint(
 		// Keep the two axes independent when a migrated blend space has no display names.
 		AxisBindings[1].Source = EBlendAxisSource::Direction;
 		AxisBindings[1].BoundVariable = TEXT("Direction");
+	}
+
+	// The aimed set must describe the same direction plane as the standing set, otherwise the two
+	// blend spaces would be sampled with different semantics while sharing one Input pin.
+	const int32 AimAxisCount = AimBlendSpace->IsA<UBlendSpace1D>() ? 1 : 2;
+	if (AimAxisCount != AxisCount)
+	{
+		UE_LOG(LogPVPAnimBlueprintBuilder, Error,
+			TEXT("aim blend space has %d axes, ground blend space has %d"), AimAxisCount, AxisCount);
+		return nullptr;
+	}
+
+	TArray<FBlendAxisBinding> AimAxisBindings;
+	AimAxisBindings.Reserve(AimAxisCount);
+	for (int32 AxisIndex = 0; AxisIndex < AimAxisCount; ++AxisIndex)
+	{
+		const FBlendAxisBinding AimBinding = DescribeBlendAxis(AimBlendSpace, AxisIndex);
+		const FBlendAxisBinding& GroundBinding = AxisBindings[AxisIndex];
+		if (AimBinding.Source != GroundBinding.Source
+			|| !FMath::IsNearlyEqual(AimBinding.Scale, GroundBinding.Scale))
+		{
+			UE_LOG(LogPVPAnimBlueprintBuilder, Error,
+				TEXT("aim blend space axis %d (source=%d scale=%.1f) does not match the ground axis "
+					"(source=%d scale=%.1f)"),
+				AxisIndex, static_cast<int32>(AimBinding.Source), AimBinding.Scale,
+				static_cast<int32>(GroundBinding.Source), GroundBinding.Scale);
+			return nullptr;
+		}
+		AimAxisBindings.Add(AimBinding);
 	}
 
 	bool bNeedsSpeed = false;
@@ -657,6 +712,22 @@ UAnimBlueprint* UPVPAnimBlueprintBuilder::BuildLocomotionAnimBlueprint(
 		}
 	}
 
+	// The aimed blend space reuses the same Speed / Direction getters validated above.
+	for (int32 AxisIndex = 0; AxisIndex < AimAxisBindings.Num(); ++AxisIndex)
+	{
+		const FBlendAxisBinding& Binding = AimAxisBindings[AxisIndex];
+		const FName AxisPinName = AxisIndex == 0 ? TEXT("X") : TEXT("Y");
+		UEdGraphPin* AxisPin = FindPin(AimBlendSpaceNode, AxisPinName, EGPD_Input);
+		UEdGraphPin* ValuePin = BuildBlendAxisValuePin(
+			GroundGraph, Binding, SpeedGetter, DirectionGetter,
+			-1780 + AxisIndex * 620, 560 + AxisIndex * 260);
+		if (!ConnectPins(GroundGraph, ValuePin, AxisPin,
+			FString::Printf(TEXT("aim blend space %s"), *AxisPinName.ToString())))
+		{
+			return nullptr;
+		}
+	}
+
 	if (!ConnectPins(GroundGraph,
 		FindPin(RunNode, PVPAnimPosePinName, EGPD_Output),
 		FindPin(RunBlendNode, TEXT("BlendPose_0"), EGPD_Input),
@@ -664,7 +735,15 @@ UAnimBlueprint* UPVPAnimBlueprintBuilder::BuildLocomotionAnimBlueprint(
 		|| !ConnectPins(GroundGraph,
 			FindPin(BlendSpaceNode, PVPAnimPosePinName, EGPD_Output),
 			FindPin(RunBlendNode, TEXT("BlendPose_1"), EGPD_Input),
-			TEXT("blend space -> blend pose 1")))
+			TEXT("blend space -> blend pose 1"))
+		|| !ConnectPins(GroundGraph,
+			FindPin(AimBlendSpaceNode, PVPAnimPosePinName, EGPD_Output),
+			FindPin(AimBlendNode, TEXT("BlendPose_0"), EGPD_Input),
+			TEXT("aim blend space -> aim blend pose 0"))
+		|| !ConnectPins(GroundGraph,
+			FindPin(RunBlendNode, PVPAnimPosePinName, EGPD_Output),
+			FindPin(AimBlendNode, TEXT("BlendPose_1"), EGPD_Input),
+			TEXT("standing blend -> aim blend pose 1")))
 	{
 		return nullptr;
 	}
@@ -674,9 +753,10 @@ UAnimBlueprint* UPVPAnimBlueprintBuilder::BuildLocomotionAnimBlueprint(
 		: nullptr;
 	UK2Node_VariableGet* RunningGetter = CreateVariableGetter(GroundGraph, TEXT("bIsRunning"), -820, 320);
 	UK2Node_VariableGet* MovingGetter = CreateVariableGetter(GroundGraph, TEXT("bIsMoving"), -820, 440);
-	if (!RunningAndMovingNode || !RunningGetter || !MovingGetter)
+	UK2Node_VariableGet* AimingGetter = CreateVariableGetter(GroundGraph, TEXT("bIsAiming"), 360, 200);
+	if (!RunningAndMovingNode || !RunningGetter || !MovingGetter || !AimingGetter)
 	{
-		UE_LOG(LogPVPAnimBlueprintBuilder, Error, TEXT("failed to create ground run condition nodes"));
+		UE_LOG(LogPVPAnimBlueprintBuilder, Error, TEXT("failed to create ground run / aim condition nodes"));
 		return nullptr;
 	}
 	if (!ConnectPins(GroundGraph,
@@ -692,9 +772,13 @@ UAnimBlueprint* UPVPAnimBlueprintBuilder::BuildLocomotionAnimBlueprint(
 			FindPin(RunBlendNode, PVPAnimActiveValuePinName, EGPD_Input),
 			TEXT("AND -> blend active value"))
 		|| !ConnectPins(GroundGraph,
-			FindPin(RunBlendNode, PVPAnimPosePinName, EGPD_Output),
+			AimingGetter->GetValuePin(),
+			FindPin(AimBlendNode, PVPAnimActiveValuePinName, EGPD_Input),
+			TEXT("bIsAiming -> aim blend active value"))
+		|| !ConnectPins(GroundGraph,
+			FindPin(AimBlendNode, PVPAnimPosePinName, EGPD_Output),
 			GroundState->GetPoseSinkPinInsideState(),
-			TEXT("ground blend -> state result")))
+			TEXT("ground aim blend -> state result")))
 	{
 		return nullptr;
 	}
@@ -804,6 +888,16 @@ UAnimBlueprint* UPVPAnimBlueprintBuilder::BuildLocomotionAnimBlueprint(
 		IsLinked(BlendSpaceNode->FindPin(TEXT("Y"), EGPD_Input)));
 	Wiring->SetBoolField(TEXT("ground_run_blend"),
 		IsLinked(RunBlendNode->FindPin(PVPAnimActiveValuePinName, EGPD_Input)));
+	Wiring->SetBoolField(TEXT("ground_standing_pose"),
+		IsLinked(RunBlendNode->FindPin(PVPAnimPosePinName, EGPD_Output)));
+	Wiring->SetBoolField(TEXT("ground_aim_blend"),
+		IsLinked(AimBlendNode->FindPin(PVPAnimActiveValuePinName, EGPD_Input)));
+	Wiring->SetBoolField(TEXT("ground_aim_blendspace_x"),
+		IsLinked(AimBlendSpaceNode->FindPin(TEXT("X"), EGPD_Input)));
+	Wiring->SetBoolField(TEXT("ground_aim_blendspace_y"),
+		IsLinked(AimBlendSpaceNode->FindPin(TEXT("Y"), EGPD_Input)));
+	Wiring->SetBoolField(TEXT("ground_aim_pose"),
+		IsLinked(AimBlendNode->FindPin(PVPAnimPosePinName, EGPD_Output)));
 	Wiring->SetBoolField(TEXT("ground_pose"), IsLinked(GroundState->GetPoseSinkPinInsideState()));
 	Wiring->SetBoolField(TEXT("jump_start_pose"), IsLinked(JumpStartState->GetPoseSinkPinInsideState()));
 	Wiring->SetBoolField(TEXT("falling_pose"), IsLinked(FallingState->GetPoseSinkPinInsideState()));
@@ -843,8 +937,10 @@ UAnimBlueprint* UPVPAnimBlueprintBuilder::BuildLocomotionAnimBlueprint(
 	Report->SetStringField(TEXT("skeleton"), ObjectPathName(AnimBlueprint->TargetSkeleton));
 	Report->SetStringField(TEXT("preview_mesh"), ObjectPathName(PreviewMesh));
 	Report->SetStringField(TEXT("ground_blendspace"), ObjectPathName(GroundBlendSpace));
+	Report->SetStringField(TEXT("aim_blendspace"), ObjectPathName(AimBlendSpace));
 	Report->SetStringField(TEXT("montage_slot"), MontageSlotNode->Node.SlotName.ToString());
 	Report->SetNumberField("blend_axis_count", AxisCount);
+	Report->SetNumberField("aim_blend_axis_count", AimAxisCount);
 
 	TArray<TSharedPtr<FJsonValue>> AxisRecords;
 	for (const FBlendAxisBinding& Binding : AxisBindings)
@@ -858,19 +954,36 @@ UAnimBlueprint* UPVPAnimBlueprintBuilder::BuildLocomotionAnimBlueprint(
 	}
 	Report->SetArrayField("blend_axes", AxisRecords);
 
-	TArray<TSharedPtr<FJsonValue>> SampleRecords;
-	for (const FBlendSample& Sample : GroundBlendSpace->GetBlendSamples())
+	TArray<TSharedPtr<FJsonValue>> AimAxisRecords;
+	for (const FBlendAxisBinding& Binding : AimAxisBindings)
 	{
-		TSharedPtr<FJsonObject> SampleRecord = MakeShared<FJsonObject>();
-		SampleRecord->SetStringField("animation", ObjectPathName(Sample.Animation));
-		TArray<TSharedPtr<FJsonValue>> SampleValue;
-		SampleValue.Add(MakeShared<FJsonValueNumber>(Sample.SampleValue.X));
-		SampleValue.Add(MakeShared<FJsonValueNumber>(Sample.SampleValue.Y));
-		SampleValue.Add(MakeShared<FJsonValueNumber>(Sample.SampleValue.Z));
-		SampleRecord->SetArrayField("value", SampleValue);
-		SampleRecords.Add(MakeShared<FJsonValueObject>(SampleRecord));
+		TSharedPtr<FJsonObject> Axis = MakeShared<FJsonObject>();
+		Axis->SetStringField("name", Binding.DisplayName);
+		Axis->SetNumberField("min", Binding.Min);
+		Axis->SetNumberField("max", Binding.Max);
+		Axis->SetStringField(TEXT("bound_variable"), Binding.BoundVariable);
+		AimAxisRecords.Add(MakeShared<FJsonValueObject>(Axis));
 	}
-	Report->SetArrayField("blend_samples", SampleRecords);
+	Report->SetArrayField("aim_blend_axes", AimAxisRecords);
+
+	const auto AddSampleRecords = [](const UBlendSpace* BlendSpace)
+	{
+		TArray<TSharedPtr<FJsonValue>> Samples;
+		for (const FBlendSample& Sample : BlendSpace->GetBlendSamples())
+		{
+			TSharedPtr<FJsonObject> SampleRecord = MakeShared<FJsonObject>();
+			SampleRecord->SetStringField("animation", ObjectPathName(Sample.Animation));
+			TArray<TSharedPtr<FJsonValue>> SampleValue;
+			SampleValue.Add(MakeShared<FJsonValueNumber>(Sample.SampleValue.X));
+			SampleValue.Add(MakeShared<FJsonValueNumber>(Sample.SampleValue.Y));
+			SampleValue.Add(MakeShared<FJsonValueNumber>(Sample.SampleValue.Z));
+			SampleRecord->SetArrayField("value", SampleValue);
+			Samples.Add(MakeShared<FJsonValueObject>(SampleRecord));
+		}
+		return Samples;
+	};
+	Report->SetArrayField("blend_samples", AddSampleRecords(GroundBlendSpace));
+	Report->SetArrayField("aim_blend_samples", AddSampleRecords(AimBlendSpace));
 
 	TArray<TSharedPtr<FJsonValue>> StateRecords;
 	const TArray<UAnimStateNode*> States = { GroundState, JumpStartState, FallingState, LandState };
@@ -1186,4 +1299,113 @@ bool UPVPAnimBlueprintBuilder::EnsureMontageSlot(
 	}
 
 	return bWired && bCompiled;
+}
+
+UAnimMontage* UPVPAnimBlueprintBuilder::BuildMontageFromSequence(
+	const FString& AssetPath,
+	UAnimSequence* SourceSequence,
+	USkeleton* Skeleton,
+	USkeletalMesh* PreviewMesh,
+	FName MontageSlotName,
+	const FString& ReportPath)
+{
+	if (!SourceSequence || !Skeleton || !PreviewMesh)
+	{
+		UE_LOG(LogPVPAnimBlueprintBuilder, Error, TEXT("missing sequence / skeleton / mesh for montage"));
+		return nullptr;
+	}
+	if (!FPackageName::IsValidLongPackageName(AssetPath))
+	{
+		UE_LOG(LogPVPAnimBlueprintBuilder, Error, TEXT("invalid package path: %s"), *AssetPath);
+		return nullptr;
+	}
+	if (FindObject<UObject>(nullptr, *AssetPath) != nullptr)
+	{
+		UE_LOG(LogPVPAnimBlueprintBuilder, Error,
+			TEXT("%s is still loaded; the Python driver must remove it first"), *AssetPath);
+		return nullptr;
+	}
+	if (SourceSequence->GetSkeleton() != Skeleton || PreviewMesh->GetSkeleton() != Skeleton)
+	{
+		UE_LOG(LogPVPAnimBlueprintBuilder, Error,
+			TEXT("montage dependencies do not share the requested skeleton"));
+		return nullptr;
+	}
+
+	if (MontageSlotName.IsNone())
+	{
+		MontageSlotName = PVPDefaultMontageSlotName;
+	}
+
+	const FString PackagePath = FPaths::GetPath(AssetPath);
+	const FString AssetName = FPaths::GetCleanFilename(AssetPath);
+	UE_LOG(LogPVPAnimBlueprintBuilder, Log, TEXT("creating montage %s from %s (slot=%s)"),
+		*AssetPath, *SourceSequence->GetName(), *MontageSlotName.ToString());
+
+	UAnimMontageFactory* Factory = NewObject<UAnimMontageFactory>();
+	Factory->SourceAnimation = SourceSequence;
+	Factory->TargetSkeleton = Skeleton;
+	Factory->PreviewSkeletalMesh = PreviewMesh;
+
+	IAssetTools& AssetTools = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools").Get();
+	UObject* CreatedAsset = AssetTools.CreateAsset(AssetName, PackagePath, UAnimMontage::StaticClass(), Factory);
+	UAnimMontage* Montage = Cast<UAnimMontage>(CreatedAsset);
+	if (!Montage)
+	{
+		UE_LOG(LogPVPAnimBlueprintBuilder, Error, TEXT("failed to create montage %s"), *AssetPath);
+		return nullptr;
+	}
+
+	// UAnimMontage's constructor already adds a DefaultSlot track; the factory fills it. Enforce the
+	// requested name so a renamed slot cannot silently produce a montage the AnimGraph never plays.
+	if (Montage->SlotAnimTracks.Num() == 0)
+	{
+		Montage->AddSlot(MontageSlotName);
+	}
+	else if (Montage->SlotAnimTracks[0].SlotName != MontageSlotName)
+	{
+		Montage->SlotAnimTracks[0].SlotName = MontageSlotName;
+	}
+	Montage->GetOutermost()->MarkPackageDirty();
+
+	const int32 SegmentCount = Montage->SlotAnimTracks.Num() > 0
+		? Montage->SlotAnimTracks[0].AnimTrack.AnimSegments.Num()
+		: 0;
+	bool bSourceSegmentMatches = false;
+	if (Montage->SlotAnimTracks.Num() > 0)
+	{
+		for (const FAnimSegment& Segment : Montage->SlotAnimTracks[0].AnimTrack.AnimSegments)
+		{
+			if (Segment.GetAnimReference() == SourceSequence)
+			{
+				bSourceSegmentMatches = true;
+				break;
+			}
+		}
+	}
+
+	TSharedRef<FJsonObject> Report = MakeShared<FJsonObject>();
+	Report->SetStringField(TEXT("asset_path"), AssetPath);
+	Report->SetStringField(TEXT("source_sequence"), ObjectPathName(SourceSequence));
+	Report->SetStringField(TEXT("skeleton"), ObjectPathName(Montage->GetSkeleton()));
+	Report->SetStringField(TEXT("preview_mesh"), ObjectPathName(Montage->GetPreviewMesh()));
+	Report->SetStringField(TEXT("montage_slot"),
+		Montage->SlotAnimTracks.Num() > 0 ? Montage->SlotAnimTracks[0].SlotName.ToString() : TEXT("None"));
+	Report->SetNumberField(TEXT("slot_track_count"), Montage->SlotAnimTracks.Num());
+	Report->SetNumberField(TEXT("segment_count"), SegmentCount);
+	Report->SetNumberField(TEXT("length"), Montage->GetPlayLength());
+	Report->SetNumberField(TEXT("section_count"), Montage->CompositeSections.Num());
+	Report->SetStringField(TEXT("first_section"),
+		Montage->CompositeSections.Num() > 0 ? Montage->CompositeSections[0].SectionName.ToString() : TEXT("None"));
+	Report->SetBoolField(TEXT("source_segment_matches"), bSourceSegmentMatches);
+	Report->SetBoolField(TEXT("slot_matches"),
+		Montage->SlotAnimTracks.Num() > 0 && Montage->SlotAnimTracks[0].SlotName == MontageSlotName);
+	Report->SetBoolField(TEXT("skeleton_matches"), Montage->GetSkeleton() == Skeleton);
+
+	if (!WriteJsonReport(ReportPath, Report))
+	{
+		UE_LOG(LogPVPAnimBlueprintBuilder, Warning, TEXT("failed to write report to %s"), *ReportPath);
+	}
+
+	return Montage;
 }

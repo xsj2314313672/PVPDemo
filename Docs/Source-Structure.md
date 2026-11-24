@@ -4,7 +4,7 @@
 
 > 说明：文中的"FPS 3C"是技术方案名称（第一人称射击品类），**工程代码统一使用 `PVP` 作为类与文件前缀**（如 `APVPCharacter`），导出宏为 `PVPDEMO_API`。
 
-> 当前状态：`Character/` 已落地 `PVPBaseCharacter.h/.cpp`（基础第一人称角色：胶囊与 Mesh 默认值对齐参考蓝图 `BP_TFA_BaseCharacter`，`CameraFP` 挂在 `head` 骨骼，已接入 Move / Look / Jump / Run 原生输入与走跑速度切换）；`Input/` 已落地 `PVPInputConfig`（Tag ↔ InputAction 数据资产）与 `PVPInputComponent`（按 Tag 绑定 Enhanced Input）；`GAS/` 已落地 `PVPGameplayTags`（仅 `InputTag.Move/Look/Jump/Run` 四个原生 Tag，其余 GAS 能力仍未搭建）；`Game/` 已落地 `PVPGameMode.h/.cpp` 与 `PVPPlayerController.h/.cpp`（会话与玩家入口：默认 Pawn / 玩家控制器、初始化与开场日志，PlayerController 在代码中默认加载并注入 `IMC_PVP_Default`）；`Animation/` 已落地 `PVPAnimInstanceBase.h/.cpp`（`UAnimInstance` 基类：游戏线程采样、动画线程计算 Move / Run / Jump locomotion 变量，供新建动画蓝图继承）与逻辑资产 `ABP_PVP_FP_Locomotion`（四状态 locomotion 图，已在 `BP_PVPBaseCharacter` 上接线；C++ 构造期默认仍为 `ABP_PVP_FP_BaseCharacter`）；`Equipment/` 已落地 `PVPWeaponActor.h/.cpp` 与 `PVPEquipmentComponent.h/.cpp`（1P/3P 双网格武器 Actor、靠近自动拾取、`ik_hand_gun` 附着、角色 / 武器成对 Montage），`PVPBaseCharacter` 构造期已挂 `EquipmentComponent`，逻辑资产新增 `BP_PVP_Weapon_AR` 与 `ABP_PVP_FP_Weapon_AR`；`Equipment/` 另落地配件槽类型与配件目录（`PVPWeaponAttachmentTypes.h`、`PVPWeaponAttachmentCatalog.h/.cpp`），武器 Actor 提供配件查询 / 显隐 / 换网格 / 应用预设接口，`BP_PVP_Weapon_AR` 已装配基础型 4 件配件；编辑器期工具模块 `Source/PVPDemoEditor/` 已落地资产引用重定向库、动画蓝图构建器（含武器 ABP 构建 / 原地 Slot 插入）与武器配件装配构建器（BP 组件树 + SCS socket 写入 + 读回）。`Camera/`、`Camera/Modes/` 仍为空目录。本文其余内容为规划职责，按实际实现进度同步更新。
+> 当前状态：`Character/` 已落地 `PVPBaseCharacter.h/.cpp`（基础第一人称角色：胶囊与 Mesh 默认值对齐参考蓝图 `BP_TFA_BaseCharacter`，`CameraFP` 挂在 `head` 骨骼，已接入 Move / Look / Jump / Run / Aim / Fire 原生输入、走跑速度切换与瞄准 FOV 变焦）；`Input/` 已落地 `PVPInputConfig`（Tag ↔ InputAction 数据资产）与 `PVPInputComponent`（按 Tag 绑定 Enhanced Input）；`GAS/` 已落地 `PVPGameplayTags`（`InputTag.Move/Look/Jump/Run/Aim/Fire` 六个原生 Tag，其余 GAS 能力仍未搭建）；`Game/` 已落地 `PVPGameMode.h/.cpp` 与 `PVPPlayerController.h/.cpp`（会话与玩家入口：默认 Pawn / 玩家控制器、初始化与开场日志，PlayerController 在代码中默认加载并注入 `IMC_PVP_Default`）；`Animation/` 已落地 `PVPAnimInstanceBase.h/.cpp`（`UAnimInstance` 基类：游戏线程采样、动画线程计算 Move / Run / Jump / Aim locomotion 变量，含 `bIsAiming`）与逻辑资产 `ABP_PVP_FP_Locomotion`（四状态 locomotion 图 + Ground 内瞄准混合，已在 `BP_PVPBaseCharacter` 上接线；C++ 构造期默认仍为 `ABP_PVP_FP_BaseCharacter`）；`Equipment/` 已落地 `PVPWeaponActor.h/.cpp` 与 `PVPEquipmentComponent.h/.cpp`（1P/3P 双网格武器 Actor、靠近自动拾取、`ik_hand_gun` 附着、角色 / 武器成对 Montage），`PVPBaseCharacter` 构造期已挂 `EquipmentComponent`，逻辑资产新增 `BP_PVP_Weapon_AR` 与 `ABP_PVP_FP_Weapon_AR`；`Equipment/` 另落地配件槽类型与配件目录（`PVPWeaponAttachmentTypes.h`、`PVPWeaponAttachmentCatalog.h/.cpp`），武器 Actor 提供配件查询 / 显隐 / 换网格 / 应用预设接口，`BP_PVP_Weapon_AR` 已装配基础型 4 件配件；编辑器期工具模块 `Source/PVPDemoEditor/` 已落地资产引用重定向库、动画蓝图构建器（含武器 ABP 构建 / 原地 Slot 插入）与武器配件装配构建器（BP 组件树 + SCS socket 写入 + 读回）。`Camera/`、`Camera/Modes/` 仍为空目录。本文其余内容为规划职责，按实际实现进度同步更新。
 
 > **阶段说明**：项目处于初期，`Camera/` 与 `Camera/Modes/` 下规划的**相机模式栈仅为架构预留，当前阶段不实现、不接入**。初期先用简单相机方案（`CameraFP` 挂在角色 `head` 骨骼上，位置由第一人称动画驱动；视角旋转由 Controller 的 `ControlRotation` 提供，`bUsePawnControlRotation=true`）跑通角色与输入，待基础稳定后再引入模式栈。其他规划文件也均为后续阶段的落点。
 
@@ -17,11 +17,11 @@ Source/
 ├── PVPDemo/                         运行时模块（Type: Runtime）
 │   ├── PVPDemo.Build.cs             模块依赖声明（已有，本次不改动）
 │   ├── PVPDemo.cpp / .h             模块入口（已有）
-│   ├── Character/                   角色层：角色本体、移动、视角、原生输入绑定（已有 PVPBaseCharacter.h/.cpp、EquipmentComponent）
+│   ├── Character/                   角色层：角色本体、移动、瞄准、视角、原生输入绑定（已有 PVPBaseCharacter.h/.cpp、EquipmentComponent）
 │   ├── Game/                        会话与玩家入口层：游戏模式、玩家控制器、默认 IMC 注入（已有）
 │   ├── Camera/                      相机层：相机组件（模式栈为预留，初期不实现；当前为空）
 │   │   └── Modes/                   相机模式子类（仅预留目录，空）
-│   ├── Animation/                   动画层：AnimInstance 基类（已有 PVPAnimInstanceBase；动画层 / 程序化动画未实现）
+│   ├── Animation/                   动画层：AnimInstance 基类（已有 PVPAnimInstanceBase，含瞄准状态；程序化动画未实现）
 │   ├── Equipment/                   装备层：武器 Actor、装备组件、配件槽类型与配件目录（已有 PVPWeaponActor、PVPEquipmentComponent、PVPWeaponAttachmentTypes、PVPWeaponAttachmentCatalog）
 │   ├── Input/                       输入层：Tag ↔ InputAction 配置与绑定组件（已有 PVPInputConfig、PVPInputComponent）
 │   └── GAS/                         技能层：GAS 基础、Montage 任务、GameplayTag（已有 PVPGameplayTags，仅输入 Tag）
@@ -29,7 +29,7 @@ Source/
     ├── PVPDemoEditor.Build.cs       编辑器模块依赖：UnrealEd / AssetTools / AssetRegistry / Projects
     ├── PVPDemoEditor.cpp / .h       模块入口（IMPLEMENT_MODULE）
     ├── PVPAssetRemapLibrary.h/.cpp  资产引用批量重定向工具（供 `Content/Python/` 脚本调用）
-    ├── PVPAnimBlueprintBuilder.h/.cpp   动画蓝图构建器（locomotion 四状态 + 武器 ABP + 原地 Slot）
+    ├── PVPAnimBlueprintBuilder.h/.cpp   动画蓝图构建器（locomotion 四状态 + Ground 瞄准混合 + 武器 ABP + 原地 Slot + 序列转 Montage）
     └── PVPWeaponAssemblyBuilder.h/.cpp  武器配件装配构建器（BP 组件树 + SCS socket 写入 + 读回报告）
 ```
 
@@ -52,7 +52,7 @@ Source/
 
 | 规划文件 | 预计职责 |
 | --- | --- |
-| `PVPBaseCharacter.h/.cpp`（**已实现**） | 角色本体：`ACharacter` 子类，按参考蓝图默认值设置胶囊（半径 5 / 半高 88）、`CharacterMesh0` 相对变换与 `BaseEyeHeight`（64 / 蹲伏 32）；持有 `CameraFP`（`UCameraComponent`，挂 `head` 骨骼、FOV 100、`bUsePawnControlRotation=true`：位置随 head 骨骼姿态，视角旋转随 Controller 的 Yaw/Pitch）。已通过 `OverrideInputComponentClass` 使用 `UPVPInputComponent`，在 `SetupPlayerInputComponent` 中按 Tag 绑定 Move（视角朝向平面移动）/ Look（写 Controller Yaw/Pitch）/ Jump（Started/Completed）/ Run（按住切 `MaxWalkSpeed`，`WalkSpeed` 300 / `RunSpeed` 600 可调），`bIsRunning` 仅供表现层读取；构造期创建 `EquipmentComponent`（装备层，见 2.4）。当前为第一人称单网格，1P 手臂 + 3P 全身双网格与 `BecomeViewTarget` 回调待后续接入 |
+| `PVPBaseCharacter.h/.cpp`（**已实现**） | 角色本体：`ACharacter` 子类，按参考蓝图默认值设置胶囊（半径 5 / 半高 88）、`CharacterMesh0` 相对变换与 `BaseEyeHeight`（64 / 蹲伏 32）；持有 `CameraFP`（`UCameraComponent`，挂 `head` 骨骼、FOV 100、`bUsePawnControlRotation=true`：位置随 head 骨骼姿态，视角旋转随 Controller 的 Yaw/Pitch）。已通过 `OverrideInputComponentClass` 使用 `UPVPInputComponent`，在 `SetupPlayerInputComponent` 中按 Tag 绑定 Move（视角朝向平面移动）/ Look（写 Controller Yaw/Pitch）/ Jump（Started/Completed）/ Run（按住切 `MaxWalkSpeed`，`WalkSpeed` 300 / `RunSpeed` 600 可调）/ Aim（按住 `bIsAiming`，FOV 100↔70、瞄准期间走速）/ Fire（播放腰射或瞄准成对 Montage），`bIsRunning` / `bIsAiming` 仅供表现层读取；构造期创建 `EquipmentComponent`（装备层，见 2.4）。当前为第一人称单网格，1P 手臂 + 3P 全身双网格与 `BecomeViewTarget` 回调待后续接入 |
 | `PVPCharacterMovementComponent.h/.cpp` | 扩展 `UCharacterMovementComponent`：冲刺、探头的网络预测，移动状态只依赖 SavedMove 压缩标志 |
 | `PVPPerspectiveComponent.h/.cpp` | 统一管理 1P/3P 可见性、阴影（隐藏身体保留投影）、第一人称渲染类型、不可见时 Tick 优化；预留可见下半身开关 |
 | `PVPCameraTargetInterface.h` | 相机读取角色数据的纯接口，使相机不依赖具体角色类（载具、炮台、无人机亦可作为相机目标） |
@@ -100,18 +100,18 @@ Source/
 
 | 文件 | 职责 |
 | --- | --- |
-| `PVPAnimInstanceBase.h/.cpp`（**已实现**） | `UAnimInstance` 基类：`NativeInitializeAnimation` 缓存 `APVPBaseCharacter` 与移动组件，`NativeUpdateAnimation` 在游戏线程采样，`NativeThreadSafeUpdateAnimation` 在动画工作线程输出 12 个 `BlueprintReadOnly` locomotion 变量（`Velocity` / `Speed` / `SpeedZ` / `MaxSpeed` / `SpeedRatio` / `Direction` / `bIsMoving` / `bIsRunning` / `bIsOnGround` / `bIsInAir` / `bIsJumping` / `bIsFalling`）；不提供蓝图写入，Look 不参与动画变量 |
+| `PVPAnimInstanceBase.h/.cpp`（**已实现**） | `UAnimInstance` 基类：`NativeInitializeAnimation` 缓存 `APVPBaseCharacter` 与移动组件，`NativeUpdateAnimation` 在游戏线程采样，`NativeThreadSafeUpdateAnimation` 在动画工作线程输出 13 个 `BlueprintReadOnly` locomotion 变量（`Velocity` / `Speed` / `SpeedZ` / `MaxSpeed` / `SpeedRatio` / `Direction` / `bIsMoving` / `bIsRunning` / `bIsAiming` / `bIsOnGround` / `bIsInAir` / `bIsJumping` / `bIsFalling`）；不提供蓝图写入，Look 不参与动画变量 |
 | `PVPBodyAnimInstance.h/.cpp` | 3P 全身：AimOffset、原地转身、探头脊柱 Roll |
 | `PVPArmsAnimInstance.h/.cpp` | 1P 手臂状态与武器层链接 |
 | `PVPWeaponAnimLayerBase.h/.cpp` | 武器动画层父类：从武器 DataAsset 读取序列，新增武器无需改主 ABP |
 | `PVPProceduralAnimComponent.h/.cpp` | 程序化第一人称：Sway / Bob / Recoil / ADS 对齐 / 贴墙收枪 |
 | `PVPSpring.h` | 弹簧阻尼工具类，供程序化动画使用 |
 
-> **武器动画与 Slot**：`ABP_PVP_FP_Weapon_AR`（`A_PVP_WEP_AR_Reference` → `DefaultSlot` → Root）由 `PVPAnimBlueprintBuilder::BuildWeaponAnimBlueprint` 生成；`ABP_PVP_FP_Locomotion` 由 `EnsureMontageSlot` 原地插入 `DefaultSlot`，所有迁移 Montage 的 Slot 名均为 `DefaultSlot`。
+> **武器动画与 Slot**：`ABP_PVP_FP_Weapon_AR`（`A_PVP_WEP_AR_Reference` → `DefaultSlot` → Root）由 `PVPAnimBlueprintBuilder::BuildWeaponAnimBlueprint` 生成；`ABP_PVP_FP_Locomotion` 由 `BuildLocomotionAnimBlueprint` 生成四状态 + Ground 内 `bIsAiming` 的 Standing/Aimed 混合，并由 `EnsureMontageSlot` 原地插入 `DefaultSlot`；瞄准射击 `AM_PVP_FP_AR_Fire_Aimed` 由 `BuildMontageFromSequence` 从序列生成，所有 Montage 的 Slot 名均为 `DefaultSlot`。
 
 **协作关系**：只读 `Character/` 与 `GAS/` 的状态；装备切换由 `Equipment/` 驱动动画层；相机位姿来自 `Camera/`。
 
-> **接线状态**：`APVPBaseCharacter` 构造函数默认 AnimClass 仍是工程自有 `/Game/PVP/Animation/AnimBP/ABP_PVP_FP_BaseCharacter`（C++ 未改）；`BP_PVPBaseCharacter` 的 Mesh AnimClass 已在编辑器中手动切到 `ABP_PVP_FP_Locomotion`（由编辑器构建器生成的 `Ground` / `JumpStart` / `Falling` / `Land` 四状态图），实例覆盖默认值并实际生效；视觉 / PIE 复核仍待做。
+> **接线状态**：`APVPBaseCharacter` 构造函数默认 AnimClass 仍是工程自有 `/Game/PVP/Animation/AnimBP/ABP_PVP_FP_BaseCharacter`（C++ 未改）；`BP_PVPBaseCharacter` 的 Mesh AnimClass 已在编辑器中手动切到 `ABP_PVP_FP_Locomotion`（由编辑器构建器生成的 `Ground` / `JumpStart` / `Falling` / `Land` 四状态图，Ground 内含 `bIsAiming` 瞄准混合），实例覆盖默认值并实际生效；`setup_pvp_weapon.py` 会读取 CDO 的 Mesh AnimClass 校验覆盖未丢，视觉 / PIE 复核仍待做。
 
 > 动画模块文档见 `Docs/Animation/`：`README.md`（变量权威表与接线入口）、`Animation-Dev.md`（线程安全设计、新增变量 SOP 与踩坑）、`Animation-Integration.md`（依赖与接口契约）。
 
@@ -124,7 +124,7 @@ Source/
 
 | 文件 | 职责 |
 | --- | --- |
-| `PVPWeaponActor.h/.cpp`（**已实现**） | `APVPWeaponActor`：`SceneRoot` + `Mesh1P` / `Mesh3P` + `PickupSphere`；Actor 级网格 / AnimClass / 挂点 / 拾取半径 / 三组成对 Montage 配置，`OnConstruction` 应用；自动拾取、`ik_hand_gun` 附着、丢弃冷却、枪口查询、1P/3P 切换；`OnConstruction` / `BeginPlay` 扫描带 `PVP.Attachment.<Slot>` 标签的组件建槽位表，提供配件查询 / 显隐 / 换网格 / 应用预设接口 |
+| `PVPWeaponActor.h/.cpp`（**已实现**） | `APVPWeaponActor`：`SceneRoot` + `Mesh1P` / `Mesh3P` + `PickupSphere`；Actor 级网格 / AnimClass / 挂点 / 拾取半径 / 四组成对 Montage（Equip / Fire / AimedFire / Reload）配置，`OnConstruction` 应用；自动拾取、`ik_hand_gun` 附着、丢弃冷却、枪口查询、1P/3P 切换；`OnConstruction` / `BeginPlay` 扫描带 `PVP.Attachment.<Slot>` 标签的组件建槽位表，提供配件查询 / 显隐 / 换网格 / 应用预设接口 |
 | `PVPEquipmentComponent.h/.cpp`（**已实现**） | `UPVPEquipmentComponent`：`CurrentWeapon`、"一次一把"、`EquipWeapon` / `UnequipCurrentWeapon` / `DropCurrentWeapon`；只依赖 `ACharacter` 与武器 Actor |
 | `PVPWeaponAttachmentTypes.h`（**已实现**） | 配件槽位契约的唯一事实来源：`E_PVPWeaponAttachmentSlot`（None / Handguard / FrontSight / RearSight / Optic / ForeGrip / Muzzle / Laser / Magazine）、`FPVPWeaponAttachmentSpec`、`FPVPWeaponAttachmentOption`、`FPVPWeaponAttachmentSlotDefinition`、`FPVPWeaponAttachmentLoadout`，以及 `ATT_<Slot>` 命名、`PVP.Attachment.<Slot>` 标签、默认 socket 与父级映射的辅助函数 |
 | `PVPWeaponAttachmentCatalog.h/.cpp`（**已实现**） | `UPVPWeaponAttachmentCatalog : UDataAsset`：全量槽位定义（含每个槽位的候选网格）与 `Basic` / `Tactical` 两套预设，提供按槽位 / 按预设查询与 `BuildLoadoutAssembly` / `BuildDefaultAssembly` |
@@ -145,10 +145,10 @@ Source/
 
 | 已实现文件 | 职责 |
 | --- | --- |
-| `PVPInputConfig.h/.cpp` | `FPVPInputAction`（InputAction + InputTag）、`UPVPInputConfig : UDataAsset`（`NativeInputActions` + `FindNativeInputActionForTag`）、`FPVPInputMappingContextAndPriority`（IMC + Priority）；构造中按 Move / Look / Jump / Run 预置四个 Tag 槽位，`SetNativeInputActionByIndex` 供编辑器 / 脚本按槽位写入 IA（GameplayTag 无法从脚本构造，因此由 C++ 预置） |
+| `PVPInputConfig.h/.cpp` | `FPVPInputAction`（InputAction + InputTag）、`UPVPInputConfig : UDataAsset`（`NativeInputActions` + `FindNativeInputActionForTag`）、`FPVPInputMappingContextAndPriority`（IMC + Priority）；构造中按 Move / Look / Jump / Run / Aim / Fire 预置六个 Tag 槽位，`EnsureNativeInputActionSlots` 给旧 4 槽资产补槽，`SetNativeInputActionByIndex` 供编辑器 / 脚本按槽位写入 IA（GameplayTag 无法从脚本构造，因此由 C++ 预置） |
 | `PVPInputComponent.h/.cpp` | `UEnhancedInputComponent` 子类：`BindNativeAction(Config, Tag, TriggerEvent, Object, Func)` 按 Tag 查 Action 并绑定，找不到时返回 nullptr 由调用方告警跳过 |
 
-**协作关系**：配置资产为 `Content/PVP/Input/DA_PVP_InputConfig`（由 `Content/Python/setup_pvp_input.py` 生成并挂到 `BP_PVPBaseCharacter` CDO），引用同目录 4 个 `IA_PVP_*`；映射上下文 `IMC_PVP_Default` 由 `APVPPlayerController` 在代码中默认加载（`DefaultMappingContexts`）。原生 Tag 声明位于 `GAS/PVPGameplayTags.h/.cpp`。工程已在 `Config/DefaultInput.ini` 启用 Enhanced Input，且**未修改**该文件——Pawn 通过 `APawn::OverrideInputComponentClass`（UE 5.9）指定 `UPVPInputComponent`。
+**协作关系**：配置资产为 `Content/PVP/Input/DA_PVP_InputConfig`（由 `Content/Python/setup_pvp_input.py` 生成并挂到 `BP_PVPBaseCharacter` CDO），引用同目录 6 个 `IA_PVP_*`（Move / Look / Jump / Run / ADS / Fire），旧 4 槽资产由 `EnsureNativeInputActionSlots` 原地迁移；映射上下文 `IMC_PVP_Default` 由 `APVPPlayerController` 在代码中默认加载（`DefaultMappingContexts`）。原生 Tag 声明位于 `GAS/PVPGameplayTags.h/.cpp`。工程已在 `Config/DefaultInput.ini` 启用 Enhanced Input，且**未修改**该文件——Pawn 通过 `APawn::OverrideInputComponentClass`（UE 5.9）指定 `UPVPInputComponent`。
 
 > 输入模块文档见 `Docs/Input/`：`README.md`（导航与已实现动作 / 绑定 / 回调速查）、`Input-Dev.md`（开发流程、新增动作 SOP、踩坑清单，含 **Look 俯仰极性约定：IMC 的 `IA_PVP_Look` 必须保留 Negate(Y)**）、`Input-Integration.md`（依赖、模块交互与对外接口）。
 
@@ -161,7 +161,7 @@ Source/
 
 | 规划文件 | 预计职责 |
 | --- | --- |
-| `PVPGameplayTags.h/.cpp`（**已实现，仅输入 Tag**） | 原生 GameplayTag 声明与定义：`InputTag.Move/Look/Jump/Run`，供 `UPVPInputConfig` 与角色输入绑定使用；`State.*`、`GameplayCue.*` 等标签留待 GAS 阶段扩展 |
+| `PVPGameplayTags.h/.cpp`（**已实现，仅输入 Tag**） | 原生 GameplayTag 声明与定义：`InputTag.Move/Look/Jump/Run/Aim/Fire`，供 `UPVPInputConfig` 与角色输入绑定使用；`State.*`、`GameplayCue.*` 等标签留待 GAS 阶段扩展 |
 | `PVPAbilitySystemGlobals.h/.cpp` | 自定义 Globals：修正 `AllocAbilityActorInfo` 使用的 SkeletalMeshComponent，避免 Montage 播到 1P 手臂 |
 | `PVPAbilityTask_PlayDualMontage.h/.cpp` | 双网格 Montage 播放任务：本地 1P 表现 + 服务器 3P 复制 |
 

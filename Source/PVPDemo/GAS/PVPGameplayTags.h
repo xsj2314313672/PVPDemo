@@ -25,4 +25,10 @@ namespace PVPGameplayTags
 
 	/** Hold to run: switches the walk speed to the run speed (IA_PVP_Run). */
 	extern PVPDEMO_API FNativeGameplayTag InputTag_Run;
+
+	/** Hold to aim down sights: aimed locomotion / camera zoom (IA_PVP_ADS). */
+	extern PVPDEMO_API FNativeGameplayTag InputTag_Aim;
+
+	/** Press to fire one shot: plays one paired fire montage (IA_PVP_Fire). */
+	extern PVPDEMO_API FNativeGameplayTag InputTag_Fire;
 }

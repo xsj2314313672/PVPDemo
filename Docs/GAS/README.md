@@ -3,7 +3,7 @@
 > 维度：技能层（GameplayTag 原生声明；GAS 基础设施未搭建）
 > 模块：GAS
 > 适用工程：PVPDemo（UE 5.9）
-> 最后更新：2026-11-23
+> 最后更新：2026-11-24
 > 上游规范：`AGENTS.md`、`Docs/AI-Workflow.md`、`Docs/Source-Structure.md`、`Docs/Content-Structure.md`
 > 配套文档：`Docs/GAS/GAS-Dev.md`（开发流程与踩坑）、`Docs/GAS/GAS-Integration.md`（依赖与接口契约）
 
@@ -56,7 +56,7 @@
 
 ## 3. 已实现能力速查（权威表：原生 Tag）
 
-当前只定义 **4 个原生 Tag**，全部属于 `InputTag` 族：
+当前只定义 **6 个原生 Tag**，全部属于 `InputTag` 族：
 
 | Tag 字符串 | C++ 符号 | 语义 | 消费方 |
 | --- | --- | --- | --- |
@@ -64,6 +64,8 @@
 | `InputTag.Look` | `PVPGameplayTags::InputTag_Look` | 视角 Yaw / Pitch 意图 | 槽位 1 → `Input_Look` |
 | `InputTag.Jump` | `PVPGameplayTags::InputTag_Jump` | 起跳 / 停止起跳 | 槽位 2 → `Input_JumpStarted` / `Input_JumpCompleted` |
 | `InputTag.Run` | `PVPGameplayTags::InputTag_Run` | 按住跑 | 槽位 3 → `Input_RunStarted` / `Input_RunCompleted` |
+| `InputTag.Aim` | `PVPGameplayTags::InputTag_Aim` | 按住瞄准（ADS） | 槽位 4 → `Input_AimStarted` / `Input_AimCompleted` |
+| `InputTag.Fire` | `PVPGameplayTags::InputTag_Fire` | 射击一次 | 槽位 5 → `Input_FireStarted` |
 
 **代码位置**：
 
@@ -71,7 +73,7 @@
 | --- | --- |
 | 声明 | `Source/PVPDemo/GAS/PVPGameplayTags.h`（`extern PVPDEMO_API FNativeGameplayTag`） |
 | 定义 | `Source/PVPDemo/GAS/PVPGameplayTags.cpp`（`UE_DEFINE_GAMEPLAY_TAG(<符号>, "<Tag 字符串>")`） |
-| 槽位预置 | `Source/PVPDemo/Input/PVPInputConfig.cpp` 构造函数按 Move / Look / Jump / Run 顺序预置 |
+| 槽位预置 | `Source/PVPDemo/Input/PVPInputConfig.cpp` 构造函数按 Move / Look / Jump / Run / Aim / Fire 顺序预置；`EnsureNativeInputActionSlots` 给旧 4 槽资产补槽 |
 | 绑定点 | `APVPBaseCharacter::SetupPlayerInputComponent`（`Source/PVPDemo/Character/PVPBaseCharacter.cpp`） |
 | 键位与 ValueType | `Docs/Input/README.md` 第 3 节（本文不复写） |
 
@@ -83,8 +85,8 @@
 
 - **无运行时入口**：本模块没有 Actor / Component / Subsystem，也没有 `BeginPlay` 或 Tick。
 - **注册时机**：`UE_DEFINE_GAMEPLAY_TAG` 在模块加载期把原生 Tag 注册进全局 Tag 管理器；因此模块被引用即注册，不依赖任何资产或配置。
-- **生效判据**：`DA_PVP_InputConfig` 的槽位能找到对应 IA（见 `Docs/Input/README.md` 第 3 节），角色日志为 `bound 6/6 native input bindings`。
-- **日志**：本模块没有独立日志类别；Tag 相关失败表现为 `UPVPInputComponent::BindNativeAction` 返回 `nullptr`，由 `APVPBaseCharacter` 的 `bound N/6` 日志暴露。
+- **生效判据**：`DA_PVP_InputConfig` 的槽位能找到对应 IA（见 `Docs/Input/README.md` 第 3 节），角色日志为 `bound 9/9 native input bindings`。
+- **日志**：本模块没有独立日志类别；Tag 相关失败表现为 `UPVPInputComponent::BindNativeAction` 返回 `nullptr`，由 `APVPBaseCharacter` 的 `bound N/9` 日志暴露。
 
 ---
 
@@ -109,8 +111,8 @@
 | 方式 | 检查内容 |
 | --- | --- |
 | 编译 | 声明与定义齐全（缺定义会链接失败，见 `GAS-Dev.md` 踩坑 1） |
-| 编辑器 Gameplay Tag 列表 | `Project Settings → Gameplay Tags` 中可见 `InputTag.Move/Look/Jump/Run` |
-| 运行日志 | 进入 `L_PVP_Showcase` 后 `bound 6/6 native input bindings`，说明 4 个 Tag 均能查到 IA |
+| 编辑器 Gameplay Tag 列表 | `Project Settings → Gameplay Tags` 中可见 `InputTag.Move/Look/Jump/Run/Aim/Fire` |
+| 运行日志 | 进入 `L_PVP_Showcase` 后 `bound 9/9 native input bindings`，说明 6 个 Tag 均能查到 IA |
 | 输入资产校验 | `Content/Python/setup_pvp_input.py` 间接覆盖：它按槽位写入 IA，槽位依赖 C++ 预置的 Tag 顺序 |
 
 详细步骤与冒烟清单见 `GAS-Dev.md` 第 6 节。

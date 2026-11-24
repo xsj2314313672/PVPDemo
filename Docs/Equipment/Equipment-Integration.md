@@ -20,8 +20,8 @@
 
 **非职责**：
 
-- 输入语义与键位：`Input/` 与 `DA_PVP_InputConfig`；本轮不新增动作。
-- 开火 / 换弹玩法与伤害：GAS 技能与武器玩法。
+- 输入语义与键位：`Input/` 与 `DA_PVP_InputConfig`；Aim / Fire 由 `Character/` 绑定并触发本模块的 Montage 接口，Equipment 不新增输入动作。
+- 开火伤害、弹药、射速与换弹状态机：GAS 技能与武器玩法。
 - 相机：`CameraFP` 仍由 `Character/` 持有。
 - 网络复制、存档、武器切换：后续装备系统。
 - 配件 UI、配件数值加成、配件拾取物：后续阶段。
@@ -80,6 +80,7 @@ Pawn 走近
 
 - 装备状态由 `UPVPEquipmentComponent::CurrentWeapon` 持有；武器 Actor 只知道自己被谁装备。
 - 动画层只接收 `Montage_Play` 请求，不反向修改装备状态。
+- 射击：角色 `Input_FireStarted` 通过 `EquipmentComponent->GetCurrentWeapon()` 取武器，`bIsAiming` 决定调用 `PlayFireMontage` 或 `PlayAimedFireMontage`；装备层不读角色瞄准状态，避免 `Equipment → Character` 反向依赖。
 - 拾取不使用 Tick / 逐帧扫描，只有 Overlap 事件。
 
 **配件数据流**：
@@ -123,6 +124,7 @@ public:
 
     UFUNCTION(BlueprintCallable) void PlayEquipMontage();
     UFUNCTION(BlueprintCallable) void PlayFireMontage();
+    UFUNCTION(BlueprintCallable) void PlayAimedFireMontage();
     UFUNCTION(BlueprintCallable) void PlayReloadMontage();
 
     UFUNCTION(BlueprintPure) bool IsEquipped() const;
@@ -141,7 +143,7 @@ public:
 };
 ```
 
-配置属性（`EditDefaultsOnly`，BP CDO 可覆盖）：`Mesh1PAsset` / `Mesh1PAnimClass` / `Mesh3PAsset` / `Mesh3PAnimClass` / `AttachSocketName` / `AttachOffset` / `MuzzleSocketName` / `AttachmentCatalog` / `PickupRadius` / `bAutoPickup` / `PickupCooldown` / `DropForwardOffset` / `DropHeightOffset` / `bPlayEquipMontageOnPickup` / `EquipMontage` / `FireMontage` / `ReloadMontage`。
+配置属性（`EditDefaultsOnly`，BP CDO 可覆盖）：`Mesh1PAsset` / `Mesh1PAnimClass` / `Mesh3PAsset` / `Mesh3PAnimClass` / `AttachSocketName` / `AttachOffset` / `MuzzleSocketName` / `AttachmentCatalog` / `PickupRadius` / `bAutoPickup` / `PickupCooldown` / `DropForwardOffset` / `DropHeightOffset` / `bPlayEquipMontageOnPickup` / `EquipMontage` / `FireMontage` / `AimedFireMontage` / `ReloadMontage`。
 
 `FPVPWeaponMontagePair`：`CharacterMontage` / `WeaponMontage` / `PlayRate`（均为 `EditAnywhere`，便于 BP CDO 与 Python 读回）。
 
@@ -166,15 +168,16 @@ public:
 
 - 新增 `UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="PVP|Equipment") TObjectPtr<UPVPEquipmentComponent> EquipmentComponent;`
 - 构造期 `CreateDefaultSubobject<UPVPEquipmentComponent>(TEXT("EquipmentComponent"))`。
-- 不新增输入动作、不改 Mesh / CameraFP / 走跑速度。
+- 角色侧新增 Aim / Fire 输入与 `bIsAiming`，通过 `EquipmentComponent` 的公开接口取武器并触发 Montage；不改 Mesh / CameraFP 挂点 / 走跑默认值（瞄准期间的速度门控由 `ApplyMovementSpeed` 负责）。
 
 ### 4.4 资产契约
 
 | 资产 / 属性 | 约定 |
 | --- | --- |
-| `BP_PVP_Weapon_AR` | 父类 `APVPWeaponActor`；`Mesh1PAsset` / `Mesh3PAsset` = `SK_PVP_AR`；AnimClass = `ABP_PVP_FP_Weapon_AR_C`；`AttachSocketName=ik_hand_gun`；`MuzzleSocketName=SOCKET_Muzzle` |
+| `BP_PVP_Weapon_AR` | 父类 `APVPWeaponActor`；`Mesh1PAsset` / `Mesh3PAsset` = `SK_PVP_AR`；AnimClass = `ABP_PVP_FP_Weapon_AR_C`；`AttachSocketName=ik_hand_gun`；`MuzzleSocketName=SOCKET_Muzzle`；`AimedFireMontage` = `AM_PVP_FP_AR_Fire_Aimed` + `AM_PVP_FP_WEP_AR_Fire` |
 | `ABP_PVP_FP_Weapon_AR` | 父类 `UAnimInstance`；骨骼 `SKEL_PVP_AR`；`A_PVP_WEP_AR_Reference` → `DefaultSlot` → Root |
-| `ABP_PVP_FP_Locomotion` | StateMachine → `DefaultSlot` → Root；四状态 / 6 过渡保持不变 |
+| `ABP_PVP_FP_Locomotion` | StateMachine → `DefaultSlot` → Root；四状态 / 6 过渡；Ground 内 `bIsAiming` 在 Standing+Run 与 Aimed 之间混合 |
+| `AM_PVP_FP_AR_Fire_Aimed` | 骨骼 `SKEL_PVP_Mannequin`；单 `DefaultSlot` 轨道 + `Default` section；由 `BuildMontageFromSequence` 生成 |
 | 角色 Mesh | `SKM_PVP_FP_Manny_Simple`，骨架 `SKEL_PVP_Mannequin`，可用挂点/骨骼 `ik_hand_gun`（`weapon_r` 不存在） |
 | 武器 Mesh | `SK_PVP_AR`，骨架 `SKEL_PVP_AR`，Socket `SOCKET_Muzzle` / `SOCKET_Sight_Rear` |
 | 地图拾取物 | `L_PVP_Showcase` 中标签 / Label 为 `PVP_WeaponPickup_AR`，数量 1 |
@@ -225,9 +228,9 @@ class UPVPWeaponAttachmentCatalog : public UDataAsset
 | 调用方 | 场景 | 方式 |
 | --- | --- | --- |
 | 角色 / 拾取 | 走近武器 | 由 `PickupSphere` Overlap 自动调用 `UPVPEquipmentComponent::EquipWeapon`，无需输入 |
-| 蓝图 / 调试 | 测试开火 / 换弹 | 取 `BP_PVP_Weapon_AR` 实例或 `EquipmentComponent->GetCurrentWeapon()`，调用 `PlayFireMontage` / `PlayReloadMontage` |
+| 蓝图 / 调试 | 测试开火 / 换弹 | 取 `BP_PVP_Weapon_AR` 实例或 `EquipmentComponent->GetCurrentWeapon()`，调用 `PlayFireMontage` / `PlayAimedFireMontage` / `PlayReloadMontage` |
 | UI | 显示当前武器 | 读取 `UPVPEquipmentComponent::CurrentWeapon` / `HasWeapon` |
-| 后续 GAS | 瞄准 / 后坐 / 弹道 | 通过 `GetMuzzleLocation()` 与 `GetActiveMesh()` 查询，不直接写装备状态 |
+| 后续 GAS | 瞄准 / 后坐 / 弹道 | 通过 `GetMuzzleLocation()` 与 `GetActiveMesh()` 查询，不直接写装备状态；瞄准状态由 `APVPBaseCharacter::bIsAiming` 提供 |
 | 动画 | 播放 Montage | 只通过 `UAnimInstance::Montage_Play` 接收；`DefaultSlot` 必须存在 |
 | UI / 调试 | 查询当前配件 | `GetAttachmentComponent(Slot)` / `GetAttachmentMesh(Slot)`，只读 |
 | 调试 / 后续配件玩法 | 换装 | `ApplyAttachmentMesh` / `SetAttachmentEnabled` / `ApplyAttachmentLoadout`；缺失槽位会记 Warning 并跳过 |
@@ -258,7 +261,7 @@ class UPVPWeaponAttachmentCatalog : public UDataAsset
 | --- | --- |
 | 修改 `APVPWeaponActor` 组件 / 默认值 | `BP_PVP_Weapon_AR`、`Saved/PVPWeaponReport` 读回项、`Docs/Equipment/README.md` 第 3.1 节 |
 | 修改 `UPVPEquipmentComponent` 接口 | 角色蓝图、UI / GAS 调用方、`Docs/Equipment/README.md` 第 3.2 节、本文第 4.2 / 5 节 |
-| 修改 Montage 对 / Slot 名 | `ABP_PVP_FP_Locomotion`、`ABP_PVP_FP_Weapon_AR`、`setup_pvp_weapon.py` 读回项、`Docs/Animation/` |
+| 修改 Montage 对 / Slot 名 | `ABP_PVP_FP_Locomotion`、`ABP_PVP_FP_Weapon_AR`、`setup_pvp_weapon.py` 读回项、`Docs/Animation/`；新增 / 修改 `AimedFireMontage` 时同时同步 `AM_PVP_FP_AR_Fire_Aimed` 与 `Docs/Equipment/README.md` 第 3.1 节 |
 | 修改角色骨架挂点 | `AttachSocketName`、PIE 校准、`Docs/Character/` |
 | 新增武器资产 | `pvp_logic_layout.py` 清单 / 数量、`Docs/Content-Structure.md`、`setup_pvp_weapon.py` |
 | 新增武器拾取物 | `verify_pvp_game_framework.py` 的 Actor 数量断言、地图保存、`Docs/Content-Structure.md` |

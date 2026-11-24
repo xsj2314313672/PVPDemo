@@ -3,7 +3,7 @@
 > 维度：输入（Enhanced Input / InputTag / InputComponent）
 > 模块：Input
 > 适用工程：PVPDemo（UE 5.9）
-> 最后更新：2026-11-23
+> 最后更新：2026-11-24
 > 上游规范：`AGENTS.md`、`Docs/AI-Workflow.md`、`Docs/Source-Structure.md`、`Docs/Content-Structure.md`
 > 配套文档：`Docs/Input/README.md`（导航与动作速查）、`Docs/Input/Input-Integration.md`（依赖与接口契约）
 
@@ -33,17 +33,17 @@
 - 输入方式：Enhanced Input。
 - 默认映射上下文：`/Game/PVP/Input/IMC_PVP_Default`，由 `APVPPlayerController` 在代码中加载并注入，蓝图无需手动添加。
 - 输入配置：`/Game/PVP/Input/DA_PVP_InputConfig`，挂在 `BP_PVPBaseCharacter` 的 CDO。
-- 原生绑定：`APVPBaseCharacter::SetupPlayerInputComponent`，通过 `UPVPInputComponent::BindNativeAction` 按 Tag 绑定 4 个动作、共 6 个事件（Jump / Run 各 Started + Completed）。
+- 原生绑定：`APVPBaseCharacter::SetupPlayerInputComponent`，通过 `UPVPInputComponent::BindNativeAction` 按 Tag 绑定 6 个动作、共 9 个事件（Jump / Run / Aim 各 Started + Completed，Fire 只绑 Started）。
 - 相机：`CameraFP` 使用 `bUsePawnControlRotation=true`，视角旋转来自 Controller，位置跟随 `head` 骨骼。
 
 ### 2.2 源码结构
 
 | 文件 | 职责 |
 | --- | --- |
-| `Source/PVPDemo/Input/PVPInputConfig.h/.cpp` | `FPVPInputAction`（InputAction + InputTag）、`UPVPInputConfig`（`NativeInputActions`、`FindNativeInputActionForTag`、`SetNativeInputActionByIndex`）、`FPVPInputMappingContextAndPriority`（IMC + Priority）；构造函数预置 4 个 Tag 槽位 |
+| `Source/PVPDemo/Input/PVPInputConfig.h/.cpp` | `FPVPInputAction`（InputAction + InputTag）、`UPVPInputConfig`（`NativeInputActions`、`FindNativeInputActionForTag`、`SetNativeInputActionByIndex`、`EnsureNativeInputActionSlots`）、`FPVPInputMappingContextAndPriority`（IMC + Priority）；构造函数预置 6 个 Tag 槽位，迁移助手给旧资产补槽 |
 | `Source/PVPDemo/Input/PVPInputComponent.h/.cpp` | `UEnhancedInputComponent` 子类；`BindNativeAction(Config, Tag, TriggerEvent, Object, Func)` 按 Tag 查 Action 并绑定，找不到返回 `nullptr` |
-| `Source/PVPDemo/GAS/PVPGameplayTags.h/.cpp` | 原生 InputTag 声明与定义：`InputTag.Move/Look/Jump/Run` |
-| `Source/PVPDemo/Character/PVPBaseCharacter.h/.cpp` | `OverrideInputComponentClass = UPVPInputComponent`；`InputConfig`、`WalkSpeed/RunSpeed`、`bIsRunning`；`SetupPlayerInputComponent` 绑定 4 个动作；Move/Look/Jump/Run 处理函数 |
+| `Source/PVPDemo/GAS/PVPGameplayTags.h/.cpp` | 原生 InputTag 声明与定义：`InputTag.Move/Look/Jump/Run/Aim/Fire` |
+| `Source/PVPDemo/Character/PVPBaseCharacter.h/.cpp` | `OverrideInputComponentClass = UPVPInputComponent`；`InputConfig`、`WalkSpeed/RunSpeed`、`bIsRunning`；`SetupPlayerInputComponent` 绑定 6 个动作；Move/Look/Jump/Run/Aim/Fire 处理函数 |
 | `Source/PVPDemo/Game/PVPPlayerController.h/.cpp` | `DefaultMappingContexts`（代码默认 IMC）；`BeginPlay` 通过 `UEnhancedInputLocalPlayerSubsystem` 注入 IMC |
 
 ### 2.3 本模块涉及的资产
@@ -77,7 +77,7 @@
 1. **创建 IA**：`IA_PVP_<动作>`，按语义选择 ValueType（Axis2D / Boolean / Axis1D），放在 `Content/PVP/Input/`。
 2. **配置 IMC**：在 `IMC_PVP_Default` 添加按键映射；需要轴修正时加 Modifier（Look 的 Y Negate 见踩坑 1）。
 3. **声明 Tag**：在 `GAS/PVPGameplayTags.h/.cpp` 增加 `InputTag_<动作>` 声明与定义，只加实际被消费的 Tag。
-4. **扩展 DA**：在 `DA_PVP_InputConfig` 增加 Tag → IA 条目；走脚本时用 `SetNativeInputActionByIndex` 或扩展 `setup_pvp_input.py`。改槽位顺序必须同时改 C++ 构造函数与脚本（见踩坑 2）。
+4. **扩展 DA**：在 `DA_PVP_InputConfig` 增加 Tag → IA 条目；走脚本时用 `SetNativeInputActionByIndex` 或扩展 `setup_pvp_input.py`。改槽位顺序必须同时改 C++ 构造函数 / `EnsureNativeInputActionSlots` 与脚本（见踩坑 2、5.5）。
 5. **绑定逻辑**：原生动作在 `APVPBaseCharacter::SetupPlayerInputComponent` 绑定；技能输入在 GAS / Hero 层绑定；保持 `Input → Character/GAS` 方向。
 6. **日志与校验**：确认绑定数量日志正确，跑 `setup_pvp_input.py`，在 PIE 中做冒烟检查。
 7. **同步文档**（缺一视为任务未完成）：
@@ -108,13 +108,13 @@
 
 ### 5.2 DA 槽位顺序错位
 
-- **现象**：脚本写入后 `DA_PVP_InputConfig` 的 Tag 与 IA 不匹配；绑定数量仍是 `6/6`，但按键触发的行为错位（例如按空格跑）。
-- **根因**：GameplayTag 无法从 Python 构造，`UPVPInputConfig` 构造函数按 Move / Look / Jump / Run 预置槽位，`setup_pvp_input.py` 通过 `SetNativeInputActionByIndex` 按索引写入；两处顺序不一致时脚本按索引写错 IA。
+- **现象**：脚本写入后 `DA_PVP_InputConfig` 的 Tag 与 IA 不匹配；绑定数量仍是 `9/9`，但按键触发的行为错位（例如按空格跑）。
+- **根因**：GameplayTag 无法从 Python 构造，`UPVPInputConfig` 构造函数 / `EnsureNativeInputActionSlots` 按 Move / Look / Jump / Run / Aim / Fire 预置槽位，`setup_pvp_input.py` 通过 `SetNativeInputActionByIndex` 按索引写入；两处顺序不一致时脚本按索引写错 IA。
 - **正确做法**：
   - C++ 构造函数槽位顺序与脚本 `REQUIRED_ACTIONS` 顺序必须逐项一致；
   - 调整顺序时同时改 C++ 与脚本，重编译后重跑脚本重建 DA；
   - 不要在编辑器里手工调换槽位顺序而不改代码，下一次跑脚本会被覆盖。
-- **验证方式**：报告中的槽位与 4 个动作一一对应；PIE 中 4 个动作行为正确；日志仍为 `bound 6/6`。
+- **验证方式**：报告中的槽位与 6 个动作一一对应；PIE 中 6 个动作行为正确；日志仍为 `bound 9/9`。
 
 ### 5.3 输入组件类型不符，绑定被跳过
 
@@ -124,7 +124,7 @@
   - 在 `APVPBaseCharacter` 构造函数设置 `OverrideInputComponentClass = UPVPInputComponent::StaticClass()`（UE 5.9 的 `APawn` 钩子）；
   - `DefaultInput.ini` 的 `DefaultInputComponentClass` 保持 `/Script/EnhancedInput.EnhancedInputComponent`，不为本角色改全局项；
   - 修改后重新编译，确认蓝图没有把 Pawn 换成别的输入组件配置。
-- **验证方式**：不再出现该警告；日志 `bound 6/6 native input bindings (config=DA_PVP_InputConfig)`；WASD / 鼠标 / 空格 / LeftShift 均有响应。
+- **验证方式**：不再出现该警告；日志 `bound 9/9 native input bindings (config=DA_PVP_InputConfig)`；WASD / 鼠标 / 空格 / LeftShift / 右键 / 左键均有响应。
 
 ### 5.4 IMC 重复注入
 
@@ -135,6 +135,13 @@
   - 需要额外上下文时追加到 `DefaultMappingContexts` 数组（可被蓝图覆盖 / 扩展），而不是在蓝图事件里另行添加；
   - 表现层（Animation / Camera）不得增删 IMC。
 - **验证方式**：日志 `applied 1 default input mapping context(s)`；PIE 中一次按键只触发一次回调（可临时加 Verbose 日志观察）；切换 Pawn 后输入仍正常。
+
+### 5.5 旧 `DA_PVP_InputConfig` 只有 4 个 Tag 槽，新动作写不进去
+
+- **现象**：`setup_pvp_input.py` 报 `has 4 native input action slots, expected 6`，Aim / Fire 未写入；或直接重建 DA 后 `BP_PVPBaseCharacter` CDO 指向空。
+- **根因**：`NativeInputActions` 是序列化数组；资产在 Aim / Fire 之前保存后不会重新执行 C++ 构造函数，改构造函数只影响新建资产。重建 DA 又会替换被 BP CDO 引用的对象。
+- **正确做法**：`setup_pvp_input.py` 先调用 `UPVPInputConfig::EnsureNativeInputActionSlots()` 原地补齐缺失 Tag 槽（顺序 Move / Look / Jump / Run / Aim / Fire），再按索引写 `InputAction`；不要删除 DA。
+- **验证方式**：报告 `native tag slots migrated: 2`（首次升级）或 `0`（已迁移），`Required actions` 表 6 行且 `Errors` 为空；PIE 日志 `bound 9/9`。
 
 ---
 
@@ -149,21 +156,21 @@ UnrealEditor-Cmd.exe "<project>.uproject" -run=PythonScript \
 
 `setup_pvp_input.py` 会：
 
-- 校验 4 个 IA 存在且 ValueType 正确（Move / Look = Axis2D，Jump / Run = Boolean），必要时修正自有副本；
+- 校验 6 个 IA 存在且 ValueType 正确（Move / Look = Axis2D，Jump / Run / Aim / Fire = Boolean），必要时修正自有副本；
 - 读取 `IMC_PVP_Default` 的映射，输出每个动作的按键；
 - **校验 `IA_PVP_Look` 的 Negate(Y) 修饰器**，缺失时报错；
-- 幂等创建 / 复用 `DA_PVP_InputConfig`，按槽位写入 4 个 IA；
+- 幂等创建 / 复用 `DA_PVP_InputConfig`，先调用 `EnsureNativeInputActionSlots` 补齐槽位，再按槽位写入 6 个 IA；
 - 把 DA 赋给 `BP_PVPBaseCharacter` CDO 并编译保存；
 - 输出 `Saved/PVPInputReport/report.json` 与 `report.md`。
 
-报告关键项：`IA_PVP_Look Negate(Y): yes`、4 个动作的 ValueType / 按键、`Errors` 为空。
+报告关键项：`IA_PVP_Look Negate(Y): yes`、`native tag slots migrated: 2`（首次升级）、6 个动作的 ValueType / 按键、`Errors` 为空。
 
 ### 6.2 运行时日志
 
 进入 `L_PVP_Showcase` 后应看到：
 
 ```text
-LogPVPBaseCharacter: ... bound 6/6 native input bindings (config=DA_PVP_InputConfig)
+LogPVPBaseCharacter: ... bound 9/9 native input bindings (config=DA_PVP_InputConfig)
 LogPVPPlayerController: ... applied 1 default input mapping context(s)
 ```
 
@@ -172,7 +179,7 @@ LogPVPPlayerController: ... applied 1 default input mapping context(s)
 | `input component is ..., expected UPVPInputComponent` | `OverrideInputComponentClass` 未生效 | 检查构造函数、重新编译（踩坑 3） |
 | `no UPVPInputConfig assigned` | BP CDO 未挂 DA | 重跑 `setup_pvp_input.py` |
 | `no default input mapping context applied` | IMC 缺失或未添加 | 检查 `/Game/PVP/Input/IMC_PVP_Default` 与 PlayerController 代码 |
-| `bound N/6` 且 N < 6 | `DA_PVP_InputConfig` 槽位缺 IA | 重跑脚本，核对槽位顺序（踩坑 2） |
+| `bound N/9` 且 N < 9 | `DA_PVP_InputConfig` 槽位缺 IA 或旧资产只有 4 槽 | 重跑脚本，核对槽位顺序（踩坑 2、5.5） |
 
 ### 6.3 视角异常排错顺序
 
@@ -190,6 +197,8 @@ LogPVPPlayerController: ... applied 1 default input mapping context(s)
 - 鼠标：左右转视角；**上抬看天、下压看地**（检查 Negate(Y)）。
 - 空格：起跳；松开停止继续上升。
 - LeftShift：按住切跑、松开回走；`bIsRunning` 状态正确。
+- 右键：空手无反应；拾取武器后按住进入瞄准（FOV 变化与姿态见 `Docs/Character/README.md`），松开退出。
+- 左键：空手无反应；有武器时播放一次成对射击动画（腰射 / 瞄准版见 `Docs/Equipment/README.md`）。
 - 抬头 / 低头时移动平面不倾斜（Move 只用 Yaw）。
 - 一次按键只触发一次回调（无 IMC 重复注入）。
 
@@ -198,7 +207,7 @@ LogPVPPlayerController: ... applied 1 default input mapping context(s)
 ## 7. 已知限制与后续路线
 
 - Run 的 `MaxWalkSpeed` 只在本地 / 自主代理应用，**网络权威速度未接**；待 GAS 或 `PVPCharacterMovementComponent` 接管（代码内有 `TODO(Network/GAS)`）。
-- 其余 `IA_PVP_*`（Sprint、Crouch、ADS、Fire 等）未绑定，属于后续阶段。
+- 其余 `IA_PVP_*`（Sprint、Crouch、Reload、Melee 等）未绑定，属于后续阶段；Aim / Fire 已绑定。
 - 未接 Enhanced Input User Settings / 按键重绑定；`DefaultMappingContexts` 暂未注册到用户设置。
 - 当前 IMC 只配置键鼠，无 Gamepad 映射。
 - 相机模式栈、1P/3P 切换、程序化相机效果均未实现。

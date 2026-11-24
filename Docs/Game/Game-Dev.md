@@ -3,7 +3,7 @@
 > 维度：会话与玩家入口（GameMode / PlayerController / 默认 IMC 注入）
 > 模块：Game
 > 适用工程：PVPDemo（UE 5.9）
-> 最后更新：2026-11-23
+> 最后更新：2026-11-24
 > 上游规范：`AGENTS.md`、`Docs/AI-Workflow.md`、`Docs/Source-Structure.md`、`Docs/Content-Structure.md`
 > 配套文档：`Docs/Game/README.md`（导航与入口速查）、`Docs/Game/Game-Integration.md`（依赖与接口契约）
 
@@ -117,10 +117,10 @@ UnrealEditor-Cmd.exe "<project>.uproject" -run=PythonScript \
 
 ### 5.2 蓝图 CDO 未指蓝图 Pawn，输入全部失效
 
-- **现象**：能出生，但 WASD / 鼠标 / 空格全部无响应，日志出现 `no UPVPInputConfig assigned`，没有 `bound 6/6`。
+- **现象**：能出生，但 WASD / 鼠标 / 空格全部无响应，日志出现 `no UPVPInputConfig assigned`，没有 `bound 9/9`。
 - **根因**：`BP_PVPGameMode` 的 CDO 仍使用 C++ 默认 `APVPBaseCharacter`（纯原生 CDO 没有 `DA_PVP_InputConfig`），而非挂着 DA 的 `BP_PVPBaseCharacter`。
 - **正确做法**：确认 `BP_PVPGameMode` CDO 的 `DefaultPawnClass` 指向 `BP_PVPBaseCharacter`；重建框架后重跑 `setup_pvp_input.py` 确保 DA 挂在该蓝图 CDO 上。
-- **验证方式**：`StartPlay default_pawn=BP_PVPBaseCharacter_C`；角色日志 `bound 6/6`。
+- **验证方式**：`StartPlay default_pawn=BP_PVPBaseCharacter_C`；角色日志 `bound 9/9`。
 
 ### 5.3 IMC 重复注入或蓝图上下文被清空
 
@@ -138,7 +138,7 @@ UnrealEditor-Cmd.exe "<project>.uproject" -run=PythonScript \
 
 ### 5.5 在控制器里绑定原生动作导致重复触发
 
-- **现象**：WASD / 鼠标响应异常（动作被执行两次）或 `bound 6/6` 日志之外还有一套绑定，行为难以定位。
+- **现象**：WASD / 鼠标响应异常（动作被执行两次）或 `bound 9/9` 日志之外还有一套绑定，行为难以定位。
 - **根因**：`APVPBaseCharacter` 已经通过 `UPVPInputComponent` 按 Tag 绑定；若在 `APVPPlayerController::SetupInputComponent` 里再绑定同一 IA，两套绑定都会响应。
 - **正确做法**：控制器只负责输入模式与 IMC 注入，`SetupInputComponent` 保持仅 `Super`；技能输入未来走 GAS / Hero 层，也不放控制器。
 - **验证方式**：控制器 `SetupInputComponent` 中无 `BindAction` / `BindNativeAction` 调用；PIE 中一次按键一次响应。

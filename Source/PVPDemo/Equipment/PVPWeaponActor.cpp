@@ -221,6 +221,13 @@ void APVPWeaponActor::PlayFireMontage()
 	PlayPairedMontage(FireMontage);
 }
 
+void APVPWeaponActor::PlayAimedFireMontage()
+{
+	// Hip fire remains the fallback so a weapon blueprint that only configures FireMontage still
+	// fires while aiming instead of going silent.
+	PlayPairedMontage(AimedFireMontage.IsEmpty() ? FireMontage : AimedFireMontage);
+}
+
 void APVPWeaponActor::PlayReloadMontage()
 {
 	PlayPairedMontage(ReloadMontage);

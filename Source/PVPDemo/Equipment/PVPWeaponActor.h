@@ -157,6 +157,14 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "PVP|Weapon|Animation")
 	FPVPWeaponMontagePair FireMontage;
 
+	/**
+	 * Fire pair played while the owner is aiming. The character side uses the aimed fire sequence
+	 * (A_PVP_FP_AR_Fire_Aimed baked into AM_PVP_FP_AR_Fire_Aimed); the weapon side reuses the
+	 * regular fire montage. Falls back to FireMontage when empty.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "PVP|Weapon|Animation")
+	FPVPWeaponMontagePair AimedFireMontage;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "PVP|Weapon|Animation")
 	FPVPWeaponMontagePair ReloadMontage;
 	//~ End Weapon configuration
@@ -177,9 +185,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "PVP|Weapon|Animation")
 	void PlayEquipMontage();
 
-	/** Plays the configured character / weapon fire pair. */
+	/** Plays the configured character / weapon hip fire pair. */
 	UFUNCTION(BlueprintCallable, Category = "PVP|Weapon|Animation")
 	void PlayFireMontage();
+
+	/** Plays the aimed fire pair, falling back to PlayFireMontage when no aimed pair is configured. */
+	UFUNCTION(BlueprintCallable, Category = "PVP|Weapon|Animation")
+	void PlayAimedFireMontage();
 
 	/** Plays the configured character / weapon reload pair. */
 	UFUNCTION(BlueprintCallable, Category = "PVP|Weapon|Animation")

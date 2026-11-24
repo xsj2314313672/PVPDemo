@@ -3,7 +3,7 @@
 > 维度：动画（AnimInstance / locomotion 变量 / 动画蓝图生成）
 > 模块：Animation
 > 适用工程：PVPDemo（UE 5.9）
-> 最后更新：2026-11-23
+> 最后更新：2026-11-24
 > 上游规范：`AGENTS.md`、`Docs/AI-Workflow.md`、`Docs/Source-Structure.md`、`Docs/Content-Structure.md`
 > 配套文档：`Docs/Animation/README.md`（导航与变量权威表）、`Docs/Animation/Animation-Dev.md`（开发流程与踩坑）
 
@@ -64,7 +64,7 @@
 
 ```text
   APVPBaseCharacter (逻辑状态，Input → Character 产生)
-        │  Velocity / MaxWalkSpeed / RunSpeed / bIsRunning
+        │  Velocity / MaxWalkSpeed / RunSpeed / bIsRunning / bIsAiming
         │  UCharacterMovementComponent.MovementMode
         ▼
   UPVPAnimInstanceBase
@@ -74,7 +74,7 @@
         │
         ├─ NativeUpdateAnimation（游戏线程，每帧）
         │     采样到私有快照：速度 / Yaw / MaxWalkSpeed / RunSpeed /
-        │     bIsRunning / IsMovingOnGround() / IsFalling()
+        │     bIsRunning / bIsAiming / IsMovingOnGround() / IsFalling()
         │     ※ 不写蓝图输出
         │
         └─ NativeThreadSafeUpdateAnimation（动画工作线程，每帧）
@@ -82,7 +82,7 @@
               快照无效 → ResetAnimationState() 输出默认值
         │
         ▼
-  ABP_PVP_FP_Locomotion（继承本类）→ AnimGraph / 四状态机 / 混合空间
+  ABP_PVP_FP_Locomotion（继承本类）→ AnimGraph / 四状态机 / Standing+Run 与 Aimed 混合
         │  只读 Velocity / Speed / Direction / bIs* 等
         ▼
   角色姿态（表现）
@@ -108,7 +108,7 @@
 | `NativeThreadSafeUpdateAnimation(float)` | 同上 | 工作线程由快照计算并写入全部蓝图变量 |
 | `MoveSpeedThreshold` | 同上 | `EditDefaultsOnly` / `BlueprintReadOnly` / `ClampMin=0`，默认 `1.0` cm/s，`bIsMoving` 判定阈值 |
 
-蓝图只读输出的权威表（12 个变量：Velocity / Speed / SpeedZ / MaxSpeed / SpeedRatio / Direction / bIsMoving / bIsRunning / bIsOnGround / bIsInAir / bIsJumping / bIsFalling）与状态判定规则见 `Docs/Animation/README.md` 第 3.2 / 3.3 节，本文不复制。
+蓝图只读输出的权威表（13 个变量：Velocity / Speed / SpeedZ / MaxSpeed / SpeedRatio / Direction / bIsMoving / bIsRunning / bIsAiming / bIsOnGround / bIsInAir / bIsJumping / bIsFalling）与状态判定规则见 `Docs/Animation/README.md` 第 3.2 / 3.3 节，本文不复制。
 
 **接口性质**：全部输出均为 `BlueprintReadOnly`，动画蓝图只能读、不能写；本类不提供蓝图写入接口，也不提供运行时 C++ 查询接口。
 
@@ -116,7 +116,9 @@
 
 | 资产 | 路径 | 消费方 / 状态 |
 | --- | --- | --- |
-| `ABP_PVP_FP_Locomotion` | `/Game/PVP/Animation/AnimBP/ABP_PVP_FP_Locomotion` | 父类 `UPVPAnimInstanceBase`；`Ground` / `JumpStart` / `Falling` / `Land`；StateMachine → `DefaultSlot` → Root；已接到 `BP_PVPBaseCharacter` 的 Mesh AnimClass |
+| `ABP_PVP_FP_Locomotion` | `/Game/PVP/Animation/AnimBP/ABP_PVP_FP_Locomotion` | 父类 `UPVPAnimInstanceBase`；`Ground` / `JumpStart` / `Falling` / `Land`；Ground 内 `bIsAiming` 在 Standing+Run 与 Aimed 之间混合；StateMachine → `DefaultSlot` → Root；已接到 `BP_PVPBaseCharacter` 的 Mesh AnimClass |
+| `BS_PVP_FP_AR_Locomotion_Aimed` | `/Game/PVPDemo/Weapons/AssaultRifle/Animations/Character/FP/Locomotion/` | 瞄准 Idle / Walk 方向平面混合空间；`setup_pvp_anim_blueprint.py` 校验轴与样本 |
+| `AM_PVP_FP_AR_Fire_Aimed` | `/Game/PVPDemo/Weapons/AssaultRifle/Animations/Character/FP/Combat/` | 瞄准射击 Montage（单 `DefaultSlot` 轨道），由 `BuildMontageFromSequence` 生成，挂在 `BP_PVP_Weapon_AR` 的 `AimedFireMontage` |
 | `ABP_PVP_FP_Weapon_AR` | `/Game/PVP/Animation/AnimBP/ABP_PVP_FP_Weapon_AR` | 父类 `UAnimInstance`；`A_PVP_WEP_AR_Reference` → `DefaultSlot` → Root；供 `APVPWeaponActor` 播放武器 Montage |
 | `ABP_PVP_FP_BaseCharacter` | `/Game/PVP/Animation/AnimBP/ABP_PVP_FP_BaseCharacter` | C++ 构造期默认 AnimClass（迁移资产），内部 Cast 目标为 `BP_PVP_BaseCharacter`；在 `BP_PVPBaseCharacter` 上已被覆盖，不再实际生效 |
 | `BP_PVPBaseCharacter` | `/Game/PVP/Characters/BP_PVPBaseCharacter` | Mesh AnimClass 已在编辑器中显式覆盖为 `ABP_PVP_FP_Locomotion`；网格仍来自 C++ 默认值 |
@@ -132,11 +134,12 @@
 
 | 接口 | 位置 | 用途 |
 | --- | --- | --- |
-| `UPVPAnimBlueprintBuilder::BuildLocomotionAnimBlueprint(...)` | `Source/PVPDemoEditor/PVPAnimBlueprintBuilder.h` | 创建 ABP、搭四状态机 / 规则、插入 `DefaultSlot`、编译并写 `Saved/PVPAnimBlueprintReport/report.json` |
+| `UPVPAnimBlueprintBuilder::BuildLocomotionAnimBlueprint(...)` | `Source/PVPDemoEditor/PVPAnimBlueprintBuilder.h` | 创建 ABP、搭四状态机 / 规则、Ground 内 `bIsAiming` 瞄准混合、插入 `DefaultSlot`、编译并写 `Saved/PVPAnimBlueprintReport/report.json`（含 aim 轴 / 样本 / 连线） |
 | `UPVPAnimBlueprintBuilder::BuildWeaponAnimBlueprint(...)` | 同上 | 创建武器 ABP：`ReferencePose → DefaultSlot → Root`，写 `Saved/PVPWeaponReport/weapon_abp_builder.json` |
 | `UPVPAnimBlueprintBuilder::EnsureMontageSlot(...)` | 同上 | 对已有 ABP 原地插入 `DefaultSlot`（幂等、不删除资产），写 `Saved/PVPWeaponReport/slot_builder.json` |
-| `Content/Python/setup_pvp_anim_blueprint.py` | `Content/Python/` | 资产校验、旧目标清理、调用构建器、编译 / 保存 / 读回、写 Markdown 报告 |
-| `Content/Python/setup_pvp_weapon.py` | `Content/Python/` | 武器 ABP / 角色 Slot / 武器 BP / 地图拾取物生成与读回，写 `Saved/PVPWeaponReport/report.{json,md}` |
+| `UPVPAnimBlueprintBuilder::BuildMontageFromSequence(...)` | 同上 | 从 `A_PVP_FP_AR_Fire_Aimed` 生成单 Slot Montage（强制 `DefaultSlot`、`Default` section），写 `Saved/PVPWeaponReport/aimed_fire_montage_builder.json` |
+| `Content/Python/setup_pvp_anim_blueprint.py` | `Content/Python/` | 资产校验（含 Aimed BlendSpace）、旧目标清理、调用构建器、编译 / 保存 / 读回、写 Markdown 报告 |
+| `Content/Python/setup_pvp_weapon.py` | `Content/Python/` | 瞄准射击 Montage / 武器 ABP / 角色 Slot / 武器 BP / 地图拾取物生成与读回，写 `Saved/PVPWeaponReport/report.{json,md}` |
 | `pvp_logic_layout.py` | `Content/Python/` | `ABP_` 路由到 `Animation/AnimBP`；期望资产含 `ABP_PVP_FP_Locomotion` / `ABP_PVP_FP_Weapon_AR`，逻辑资产总数 81（`Data` 2） |
 
 - 构建器属于编辑器模块，不进入打包；运行时模块不依赖 `AnimGraph` / `BlueprintGraph`。
@@ -150,8 +153,8 @@
 
 1. `ABP_PVP_FP_Locomotion` 已由 `Docs/Animation/Animation-Dev.md` 第 4.3 节生成；需要改图时修改构建器并重跑脚本，不要手改生成物。
 2. 在 AnimGraph / 状态机 / 混合空间读取 `Docs/Animation/README.md` 第 3.2 节变量；只读，不写。
-3. 接线已完成：`BP_PVPBaseCharacter` 的 Mesh Anim Class 指向 `ABP_PVP_FP_Locomotion`；重跑生成脚本后复查该覆盖，并在编辑器视口确认角色不再停在参考姿势。
-4. 武器动画：`Equipment/` 的 `APVPWeaponActor::PlayEquipMontage` / `PlayFireMontage` / `PlayReloadMontage` 会同时对角色 Mesh 与武器 Mesh 调用 `Montage_Play`；角色 Montage 用 `SKEL_PVP_Mannequin`，武器 Montage 用 `SKEL_PVP_AR`，Slot 均为 `DefaultSlot`。
+3. 接线已完成：`BP_PVPBaseCharacter` 的 Mesh Anim Class 指向 `ABP_PVP_FP_Locomotion`；重跑生成脚本后由 `setup_pvp_weapon.py` 读取 CDO 校验该覆盖，并在编辑器视口确认角色不再停在参考姿势。
+4. 武器动画：`Equipment/` 的 `APVPWeaponActor::PlayEquipMontage` / `PlayFireMontage` / `PlayAimedFireMontage` / `PlayReloadMontage` 会同时对角色 Mesh 与武器 Mesh 调用 `Montage_Play`；角色 Montage 用 `SKEL_PVP_Mannequin`，武器 Montage 用 `SKEL_PVP_AR`，Slot 均为 `DefaultSlot`。
 5. PIE 按 `Docs/Animation/Animation-Dev.md` 第 6.3 节冒烟；变量全为默认值时先查该文档第 5 节踩坑 1 / 4。
 
 ### 5.2 其他 C++ 模块读取动画状态
@@ -188,6 +191,7 @@
 | 线程职责调整 | `Docs/Animation/Animation-Dev.md` 第 3 节设计决策与第 5 节踩坑 1 |
 | 接线状态或 AnimClass 覆盖方式变化 | 资产由编辑器 / `Content/Python/` 产出；`Docs/Content-Structure.md`、`Docs/Source-Structure.md`、`Docs/Animation/README.md` 第 1 / 3.1 / 4 / 5 节、`Docs/Character/` 三件套与三份文首日期 |
 | 状态 / 过渡 / BlendSpace 绑定变化 | `Docs/Animation/README.md` 第 3.4 节、`Docs/Animation/Animation-Dev.md` 第 3 / 4 / 5 节、本文第 4.3 节 |
+| 瞄准变量 / Aimed BlendSpace / 瞄准截面变化 | `PVPAnimInstanceBase` 采样、`BuildLocomotionAnimBlueprint` 的 `AimBlendSpace` 参数、`setup_pvp_anim_blueprint.py` 读回项、`Docs/Animation/README.md` 第 3.2 / 3.4 节、`Docs/Character/` 瞄准状态 |
 | 武器 ABP / `DefaultSlot` / 成对 Montage 变化 | `Docs/Animation/README.md` 第 3.1 / 3.5 节、`Docs/Animation/Animation-Dev.md` 第 3 / 4 / 5 节、本文第 4.2 / 4.3 / 5.1 节、`Docs/Equipment/` 三件套 |
 | 构建器或生成脚本变化 | `Source/PVPDemoEditor/PVPAnimBlueprintBuilder.*`、`Content/Python/setup_pvp_anim_blueprint.py`、`Content/Python/setup_pvp_weapon.py`、`Docs/Source-Structure.md` 第 2.8 节、本文第 2.1 / 4.3 节 |
 | Build.cs 依赖变化 | `Source/PVPDemo/PVPDemo.Build.cs`、`Source/PVPDemoEditor/PVPDemoEditor.Build.cs`、`Docs/Source-Structure.md` 模块依赖段、本文第 2.1 节 |

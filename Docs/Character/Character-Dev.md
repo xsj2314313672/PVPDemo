@@ -3,7 +3,7 @@
 > 维度：角色（Character / 移动状态 / 1P 相机内置）
 > 模块：Character
 > 适用工程：PVPDemo（UE 5.9）
-> 最后更新：2026-11-23
+> 最后更新：2026-11-24
 > 上游规范：`AGENTS.md`、`Docs/AI-Workflow.md`、`Docs/Source-Structure.md`、`Docs/Content-Structure.md`
 > 配套文档：`Docs/Character/README.md`（导航与能力速查）、`Docs/Character/Character-Integration.md`（依赖与接口契约）
 
@@ -31,8 +31,10 @@
 
 - 角色基类：`APVPBaseCharacter`（`UCLASS(Blueprintable)`，`ACharacter` 子类），蓝图子类为 `BP_PVPBaseCharacter`。
 - 视角：`CameraFP` 挂在 `CharacterMesh0` 的 `head` 骨骼上，`bUsePawnControlRotation=true`，旋转来自 Controller 的 Yaw / Pitch，位置随第一人称动画。
-- 移动：`bUseControllerRotationYaw=true`；`MaxWalkSpeed` 在构造与 `BeginPlay` 各写一次，按住 `InputTag.Run` 在 `WalkSpeed`(300) / `RunSpeed`(600) 之间切换。
-- 输入：通过 `OverrideInputComponentClass` 使用 `UPVPInputComponent`，在 `SetupPlayerInputComponent` 中按 Tag 绑定 4 个动作 / 6 条事件；绑定关系见 `Docs/Input/README.md` 第 3 节。
+- 移动：`bUseControllerRotationYaw=true`；`MaxWalkSpeed` 由 `ApplyMovementSpeed` 统一应用，按住 `InputTag.Run` 在 `WalkSpeed`(300) / `RunSpeed`(600) 之间切换，瞄准期间固定走速。
+- 瞄准：按住 `InputTag.Aim` 进入 `bIsAiming`；`Tick` 只在 FOV 过渡期间开启，`CameraFP` 在 100 与 `AimFieldOfView`(70) 之间 `FInterpTo`；武器丢失时自动退出。
+- 射击：`InputTag.Fire` 只触发一次成对 Montage，具体 Montage 选择由 `APVPWeaponActor` 负责（腰射 / 瞄准版）。
+- 输入：通过 `OverrideInputComponentClass` 使用 `UPVPInputComponent`，在 `SetupPlayerInputComponent` 中按 Tag 绑定 6 个动作 / 9 条事件；绑定关系见 `Docs/Input/README.md` 第 3 节。
 - 装备：构造期创建 `UPVPEquipmentComponent`（当前武器 / 一次一把）；武器拾取、附着与成对 Montage 由 `Equipment/` 负责，角色不实现武器逻辑。
 - 组件默认值：以参考蓝图导出值（`Saved/PVPCharacterDump/tfa_base_character.json`）为准，见导航第 3.1 节。
 
@@ -40,12 +42,13 @@
 
 | 文件 / 区域 | 职责 |
 | --- | --- |
-| `PVPBaseCharacter.h` | 公开组件与属性（`CameraFP`、`InputConfig`、`WalkSpeed`、`RunSpeed`、`bIsRunning`）、输入回调声明、`TODO(3P)` 规划注释 |
+| `PVPBaseCharacter.h` | 公开组件与属性（`CameraFP`、`InputConfig`、`WalkSpeed`、`RunSpeed`、`bIsRunning`、`bIsAiming`、`AimFieldOfView`、`AimInterpolationSpeed`）、输入回调声明、`TODO(3P)` 规划注释 |
 | `PVPBaseCharacter.cpp` — `PVPBaseCharacterDefaults` | 胶囊 / Mesh / 相机挂点 / FOV / 第一人称 Mesh 与 AnimBP 路径的集中常量 |
-| `PVPBaseCharacter.cpp` — 构造函数 | 胶囊、旋转跟随、眼高、输入组件类型、初始速度、Mesh 与 AnimBP 查找、`CameraFP` 创建与挂接、`EquipmentComponent` 创建 |
-| `PVPBaseCharacter.cpp` — `BeginPlay` | 重置跑步状态，并按蓝图覆盖后的 `WalkSpeed` 重写 `MaxWalkSpeed` |
-| `PVPBaseCharacter.cpp` — `SetupPlayerInputComponent` | Cast 校验输入组件 → 校验 `InputConfig` → 绑定 6 条事件 → 打印 `bound N/6` |
-| `PVPBaseCharacter.cpp` — `Input_Move` / `Input_Look` / `Input_Jump*` / `Input_Run*` / `SetRunning` | 移动基向量、视角写 Controller、起跳、速度切换与 Verbose 日志 |
+| `PVPBaseCharacter.cpp` — 构造函数 | 胶囊、旋转跟随、眼高、输入组件类型、初始速度、Mesh 与 AnimBP 查找、`CameraFP` 创建与挂接、`EquipmentComponent` 创建、Tick 默认关闭 |
+| `PVPBaseCharacter.cpp` — `BeginPlay` | 重置跑步 / 瞄准状态，缓存 `DefaultFieldOfView`，并按蓝图覆盖后的 `WalkSpeed` 应用 `MaxWalkSpeed` |
+| `PVPBaseCharacter.cpp` — `Tick` | 瞄准或 FOV 过渡期间开启：FOV `FInterpTo`、武器丢失检测；仅在松开瞄准且 FOV 收敛后关闭 Tick |
+| `PVPBaseCharacter.cpp` — `SetupPlayerInputComponent` | Cast 校验输入组件 → 校验 `InputConfig` → 绑定 9 条事件 → 打印 `bound N/9` |
+| `PVPBaseCharacter.cpp` — `Input_Move` / `Input_Look` / `Input_Jump*` / `Input_Run*` / `Input_Aim*` / `Input_FireStarted` / `SetRunning` / `SetAiming` / `ApplyMovementSpeed` | 移动基向量、视角写 Controller、起跳、速度切换、瞄准状态与 FOV、射击转发、Verbose 日志 |
 
 ### 2.3 本模块涉及的资产
 
@@ -54,7 +57,8 @@
 | `BP_PVPBaseCharacter` | 继承 `APVPBaseCharacter` 的玩家角色蓝图；CDO 挂 `DA_PVP_InputConfig` | `Content/PVP/Characters/`，由 `compare_tfa_character.py` 创建 / 复用 |
 | `BPI_PVP_AnimationState`、`ABP_PVP_Manny_PostProcess` | 动画状态接口与后处理动画蓝图（角色表现链） | `Content/PVP/Animation/Interfaces/`、`Content/PVP/Animation/AnimBP/` |
 | `SKM_PVP_FP_Manny_Simple`、`ABP_PVP_FP_BaseCharacter` | 构造期 `ConstructorHelpers` 引用的第一人称网格与动画蓝图 | `/Game/PVPDemo/Characters/Mannequins/Meshes/`、`/Game/PVP/Animation/AnimBP/`（工程自有，不依赖第三方包） |
-| `ABP_PVP_FP_Locomotion` | 新 locomotion ABP（父类 `UPVPAnimInstanceBase`，四状态） | `/Game/PVP/Animation/AnimBP/`；已手动挂到 `BP_PVPBaseCharacter` 的 Mesh AnimClass（C++ 默认未改） |
+| `ABP_PVP_FP_Locomotion` | 新 locomotion ABP（父类 `UPVPAnimInstanceBase`，四状态 + Ground 内 `bIsAiming` 瞄准混合） | `/Game/PVP/Animation/AnimBP/`；已挂到 `BP_PVPBaseCharacter` 的 Mesh AnimClass（C++ 默认未改），重建后由 `setup_pvp_weapon.py` 读回 CDO 校验 |
+| `BP_PVP_Weapon_AR` / `AM_PVP_FP_AR_Fire_Aimed` | 瞄准 / 射击阶段的武器与瞄准射击 Montage | `/Game/PVP/Actors/`、`/Game/PVPDemo/Weapons/AssaultRifle/Animations/Character/FP/Combat/`；由 `setup_pvp_weapon.py` 生成并配置到武器 CDO |
 
 - 资产数量只看 `Docs/Content-Structure.md`，本文不复制总数。
 - `.uasset` 只能由 UE 编辑器或 `Content/Python/` 脚本产出，禁止手写 / 伪造。
@@ -69,10 +73,13 @@
 4. **Look 不在 C++ 取反**。俯仰极性由 `IMC_PVP_Default` 的 `InputModifierNegate(Y)` 唯一修正，避免两处取反互相抵消（跨模块约定见 `Docs/Input/Input-Dev.md` 踩坑 1）。
 5. **输入组件类型走 Pawn 钩子**。`APawn::OverrideInputComponentClass` 只影响本角色，不动 `Config/DefaultInput.ini` 的全局 `DefaultInputComponentClass`，否则会影响工程内所有 Pawn。
 6. **速度在 `BeginPlay` 重新应用**。蓝图子类默认值在 C++ 构造之后覆盖组件属性，只在构造函数写 `MaxWalkSpeed` 会被蓝图 CDO 覆盖；`BeginPlay` 再按 `WalkSpeed` 写一次才是可靠时机。
-7. **速度切换无逐帧开销**。`SetRunning` 状态相同直接返回，只有 Started / Completed 时写一次 `MaxWalkSpeed`，不需要 Tick。
-8. **相机暂留本模块**。`Camera/` 模式栈处于预留阶段，提前拆分会引入无人消费的抽象；等模式栈落地时再把 `CameraFP` 迁出，迁移边界见 `Character-Integration.md` 第 6 节。
-9. **失败降级不崩溃**。`InputConfig` 缺失、输入组件类型不符只告警并跳过绑定；`FObjectFinder` 失败只是网格 / 动画为空，角色仍可生成，便于空内容工程启动。
-10. **装备组件由角色持有，但武器逻辑不写在角色里**。`Character → Equipment` 单向；`UPVPEquipmentComponent` 只依赖 `ACharacter` 与 `APVPWeaponActor`，避免 `Equipment/` 反向包含 `Character/` 具体类。
+7. **速度切换无逐帧开销**。`SetRunning` / `SetAiming` 状态相同直接返回，只有状态变化时由 `ApplyMovementSpeed` 写一次 `MaxWalkSpeed`。
+8. **瞄准状态归角色，FOV 用条件 Tick**。`bIsAiming` 是角色逻辑状态，Animation 只读，Camera 由角色写 FOV；`Tick` 默认关闭，只在瞄准或 FOV 未收敛时开启；瞄准期间保留 Tick 以检测武器丢失，松开瞄准且 FOV 收敛后自动关闭。相机模式栈仍未实现，`Camera/Modes/` 不提前创建。
+9. **瞄准期间强制走速**。aimed 混合空间没有跑步样本，`ApplyMovementSpeed` 在 `bIsAiming` 时忽略 `bIsRunning`；`bIsRunning` 仍保留 Shift 语义，松开瞄准后若仍按住则恢复跑速。
+10. **空手不允许瞄准 / 射击**。`SetAiming(true)` 与 `Input_FireStarted` 都先检查 `EquipmentComponent->HasWeapon()`；避免无武器时出现变焦或空手 Montage。
+11. **相机暂留本模块**。`Camera/` 模式栈处于预留阶段，提前拆分会引入无人消费的抽象；等模式栈落地时再把 `CameraFP` 与瞄准 FOV 迁出，迁移边界见 `Character-Integration.md` 第 6 节。
+12. **失败降级不崩溃**。`InputConfig` 缺失、输入组件类型不符只告警并跳过绑定；`FObjectFinder` 失败只是网格 / 动画为空，角色仍可生成，便于空内容工程启动。
+13. **装备组件由角色持有，但武器逻辑不写在角色里**。`Character → Equipment` 单向；`UPVPEquipmentComponent` 只依赖 `ACharacter` 与 `APVPWeaponActor`，避免 `Equipment/` 反向包含 `Character/` 具体类；瞄准 / 射击只调用武器公开接口，不读武器内部状态。
 
 ---
 
@@ -100,7 +107,7 @@
 - **现象**：日志出现 `<pawn>: input component is UEnhancedInputComponent, expected UPVPInputComponent; native bindings skipped.` 或 `<pawn>: no UPVPInputConfig assigned; native bindings skipped.`，WASD / 鼠标 / 空格全部无响应。
 - **根因**：① Pawn 实际使用的输入组件不是 `UPVPInputComponent`，常见于构造函数改动后未重编译，或有人把 `Config/DefaultInput.ini` 的 `DefaultInputComponentClass` 改成别的类型；② `BP_PVPBaseCharacter` 的 CDO 没有挂 `DA_PVP_InputConfig`。
 - **正确做法**：保留构造函数中的 `OverrideInputComponentClass = UPVPInputComponent::StaticClass()`；不要改全局 `DefaultInputComponentClass`；CDO 的 `InputConfig` 由 `setup_pvp_input.py` 赋值，缺失时重跑脚本而不是手工乱填。
-- **验证方式**：日志恢复为 `bound 6/6 native input bindings (config=DA_PVP_InputConfig)`；`Saved/PVPInputReport/report.md` 中 DA 挂接项为通过。
+- **验证方式**：日志恢复为 `bound 9/9 native input bindings (config=DA_PVP_InputConfig)`；`Saved/PVPInputReport/report.md` 中 DA 挂接项为通过。
 
 ### 5.2 视角"不转"或"上下相反"时先分清归属
 
@@ -113,7 +120,7 @@
 
 - **现象**：在 `BP_PVPBaseCharacter` 里把 `WalkSpeed` / `RunSpeed` 改成别的值，PIE 里移动速度仍是 300 / 600，或跑步切换后速度回落到旧值。
 - **根因**：蓝图类默认值在 C++ 构造函数之后应用，构造函数里写入的 `MaxWalkSpeed = WalkSpeed` 会被蓝图 CDO 对 `CharacterMovement` 的序列化值覆盖；只在构造函数写一次不可靠。
-- **正确做法**：`BeginPlay` 中重置 `bIsRunning=false` 并按 `WalkSpeed` 重写 `MaxWalkSpeed`（当前实现即如此）；新增速度档位时同步扩展 `SetRunning` 与 `BeginPlay` 两处。
+- **正确做法**：`BeginPlay` 中重置 `bIsRunning=false` 并调用 `ApplyMovementSpeed`；`SetRunning` 不直接写速度，统一走 `ApplyMovementSpeed`（其中包含 `bIsAiming` 门控）。新增速度档位时只改这一个入口。
 - **验证方式**：PIE 中按住 / 松开 LeftShift，Verbose 日志 `running=... max_walk_speed=...` 的数值与蓝图设置一致；`GetCharacterMovement()->MaxWalkSpeed` 在 `BeginPlay` 后等于 `WalkSpeed`。
 
 ### 5.4 误把动画骨骼旋转当作视角修改
@@ -123,7 +130,14 @@
 - **正确做法**：视角变化走 `AddControllerPitchInput` / `AddControllerYawInput`、`CameraModifier` 或 `CameraShake`；动画只需驱动位置与身体姿态。表现层不得直接写 `ControlRotation`。
 - **验证方式**：PIE 中只播动画不改输入时，准星方向保持不变、画面位置随头 bob 轻微变化。
 
-### 5.5 第三方网格 / 动画蓝图缺失时角色"裸奔"（已修复）
+### 5.5 瞄准 FOV 不恢复 / 瞄准时仍能跑
+
+- **现象**：松开右键后镜头仍停在 70，或瞄准时按住 Shift 仍以 600 移动，导致 aimed 混合空间滑步。
+- **根因**：① FOV 插值依赖 `Tick`，若 `PrimaryActorTick.bCanEverTick=false` 或 `SetActorTickEnabled(true)` 缺失，`SetAiming` 只改状态不改画面；② 速度只由 `SetRunning` 写，`SetAiming` 没有重新应用 `MaxWalkSpeed`。
+- **正确做法**：`SetAiming` 每次状态变化都 `SetActorTickEnabled(true)` 并调用 `ApplyMovementSpeed`；`Tick` 在松开瞄准且 FOV 收敛后把 FOV 设为精确目标值再关闭 Tick（瞄准期间保持 Tick 以检测武器丢失）；`ApplyMovementSpeed` 用 `bIsRunning && !bIsAiming` 计算跑速。
+- **验证方式**：PIE 中按住 / 松开右键，`CameraFP` FOV 在 100 ↔ 70 平滑变化并最终停住；按住 Shift + 右键时 `MaxWalkSpeed=300`，松开右键仍按 Shift 时恢复 600；`aiming=true max_walk_speed=300.0` 的 Verbose 日志出现。
+
+### 5.6 第三方网格 / 动画蓝图缺失时角色"裸奔"（已修复）
 
 - **现象**：克隆工程后未导入原包，PIE 能出生、能移动，但看不到手臂与武器，日志中可能出现 `FObjectFinder` 找不到对象的告警。
 - **根因（历史）**：`PVPBaseCharacter.cpp` 构造函数此前通过 `ConstructorHelpers::FObjectFinder` / `FClassFinder` 引用 `/Game/InfimaGames/TacticalFPSAnimations/...` 的 `SKM_FP_Manny_Simple` 与 `ABP_TFA_FP_BaseCharacter`；该包不随仓库分发。
@@ -153,14 +167,14 @@ UnrealEditor-Cmd.exe "<project>.uproject" -run=PythonScript \
 进入 `L_PVP_Showcase` 后应看到：
 
 ```text
-LogPVPBaseCharacter: BP_PVPBaseCharacter_C_0: bound 6/6 native input bindings (config=DA_PVP_InputConfig)
+LogPVPBaseCharacter: BP_PVPBaseCharacter_C_0: bound 9/9 native input bindings (config=DA_PVP_InputConfig)
 ```
 
 | 日志 | 含义 | 处理 |
 | --- | --- | --- |
 | `input component is ..., expected UPVPInputComponent` | 输入组件类型不符 | 检查构造函数与 `DefaultInput.ini`，重新编译（踩坑 1） |
 | `no UPVPInputConfig assigned` | CDO 未挂 DA | 重跑 `setup_pvp_input.py` |
-| `bound N/6` 且 N < 6 | DA 槽位缺 IA | 重跑脚本并核对槽位顺序（`Docs/Input/Input-Dev.md` 踩坑 2） |
+| `bound N/9` 且 N < 9 | DA 槽位缺 IA 或旧资产只有 4 槽 | 重跑脚本并核对槽位顺序（`Docs/Input/Input-Dev.md` 踩坑 2、5.5） |
 | 无 `bound` 日志 | `SetupPlayerInputComponent` 未执行 | 确认已 Possess、Pawn 由 `BP_PVPBaseCharacter` 生成 |
 
 ### 6.3 PIE 冒烟清单
@@ -171,6 +185,9 @@ LogPVPBaseCharacter: BP_PVPBaseCharacter_C_0: bound 6/6 native input bindings (c
 - 鼠标左右转视角、上抬看天、下压看地。
 - 空格起跳、松开停止上升；LeftShift 按住切跑、松开回走。
 - 跑步切换时 `MaxWalkSpeed` 在 300 / 600 间切换，无逐帧抖动。
+- 空手按住右键 / 左键无反应；拾取武器后按住右键，FOV 平滑到约 70、角色切瞄准姿态；按住 Shift 仍为走速。
+- 瞄准时左键播放瞄准射击动画，松开右键回腰射；左键腰射播放腰射 Montage。
+- 丢枪 / 卸下武器后瞄准自动退出，FOV 回到 100。
 - 静态站立播动画（头 bob / 待机）时准星方向不漂移（踩坑 4 的反向验证）。
 
 ---
@@ -179,7 +196,9 @@ LogPVPBaseCharacter: BP_PVPBaseCharacter_C_0: bound 6/6 native input bindings (c
 
 - **单网格**：仅有 1P 网格；1P 手臂 + 3P 全身双网格、可见性 / 阴影策略与 `PVPPerspectiveComponent` 未实现。
 - **3P 未实现**：`CameraPivotPoint → SpringArm → CameraTP`、`PP_Bodycam`、`SpotLight` 与透视切换 / 相机动画切换输入均未接入（`TODO(3P)`）。
-- **相机模式栈**：`Camera/` 与 `Camera/Modes/` 仅预留；`CameraFP` 暂留本模块，迁移时需同步 `Character-Integration.md` 第 6 节与 `Docs/Input/Input-Integration.md` 第 3 节。
+- **相机模式栈**：`Camera/` 与 `Camera/Modes/` 仅预留；`CameraFP` 与瞄准 FOV 暂留本模块，迁移时需同步 `Character-Integration.md` 第 6 节与 `Docs/Input/Input-Integration.md` 第 3 节。
+- **瞄准玩法**：无 AimOffset、准星 UI、瞄准灵敏度缩放、后坐力与扩散；瞄准期间只能用走速（aimed 混合空间无跑步样本）。
+- **瞄准输入边界**：按住右键时拾取武器不会自动进入瞄准，需要重新按一次右键。
 - **网络权威速度**：`MaxWalkSpeed` 只在本机 / 自主代理写入，服务器未校验；待 `PVPCharacterMovementComponent` 或 GAS 属性接管（`TODO(Network/GAS)`）。
 - **第三方引用（已解除）**：构造期已改引用自有 `SKM_PVP_FP_Manny_Simple` 与 `ABP_PVP_FP_BaseCharacter`，与 `Docs/Source-Structure.md` 2.1 记录一致；克隆工程无需导入原包。
 - **无技能 / 属性**：血量、伤害、死亡表现等待 `GAS/` 落地，见 `Docs/GAS/README.md` 第 5 节。
